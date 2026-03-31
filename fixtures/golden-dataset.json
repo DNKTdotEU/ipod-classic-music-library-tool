@@ -1,0 +1,44 @@
+{
+  "tracks": [
+    {
+      "id": "t1",
+      "title": "Song A",
+      "artist": "Artist X",
+      "album": "Album 1",
+      "variants": [
+        {
+          "path": "/lib/song-a-192.mp3",
+          "format": "mp3",
+          "durationSec": 210.1,
+          "fingerprint": "fp_same_1",
+          "metadataCompleteness": 0.95,
+          "hasArtwork": true
+        },
+        {
+          "path": "/lib/song-a-lossless.flac",
+          "format": "flac",
+          "durationSec": 210.3,
+          "fingerprint": "fp_same_1",
+          "metadataCompleteness": 0.80,
+          "hasArtwork": false
+        }
+      ]
+    },
+    {
+      "id": "t2",
+      "title": "Song B (Live)",
+      "artist": "Artist X",
+      "album": "Album Live",
+      "variants": [
+        {
+          "path": "/lib/song-b-live.mp3",
+          "format": "mp3",
+          "durationSec": 260.0,
+          "fingerprint": "fp_live_2",
+          "metadataCompleteness": 0.70,
+          "hasArtwork": false
+        }
+      ]
+    }
+  ]
+}

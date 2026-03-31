@@ -1,0 +1,52 @@
+{
+  "name": "ipod-classic-music-library-tool",
+  "version": "0.1.0",
+  "description": "Desktop-first music library cleanup tool for iPod Classic workflows",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "concurrently -k \"npm:dev:renderer\" \"npm:dev:electron\"",
+    "dev:renderer": "vite",
+    "dev:electron": "wait-on tcp:5173 && electron .",
+    "build": "npm run build:renderer && npm run build:electron",
+    "build:renderer": "vite build",
+    "build:electron": "tsc -p tsconfig.electron.json",
+    "start": "electron .",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "docs:lint": "markdownlint \"**/*.md\" --ignore node_modules",
+    "validate": "npm run lint && npm run typecheck && npm run test",
+    "ci:local": "npm run validate && npm run docs:lint",
+    "perf:seed": "tsx scripts/seed-performance-dataset.ts",
+    "perf:run": "tsx scripts/perf-benchmark.ts",
+    "release:checklist": "tsx scripts/release-checklist.ts"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.8.1",
+    "electron": "^35.1.4",
+    "music-metadata": "^10.6.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.2",
+    "@typescript-eslint/eslint-plugin": "^8.26.0",
+    "@typescript-eslint/parser": "^8.26.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.2",
+    "eslint": "^9.22.0",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "markdownlint-cli": "^0.44.0",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2",
+    "vite": "^6.2.1",
+    "vitest": "^3.0.8",
+    "wait-on": "^8.0.3"
+  }
+}
