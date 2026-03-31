@@ -1,12 +1,13 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
     "outDir": "dist-electron",
     "rootDir": "electron",
     "lib": ["ES2022"],
     "types": ["node"]
   },
-  "include": ["electron/**/*"]
+  "include": ["electron/**/*"],
+  "exclude": ["electron/preload.ts"]
 }

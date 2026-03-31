@@ -5,3 +5,25 @@ This product includes software developed by project contributors and third-party
 dependencies distributed under their respective licenses.
 
 The project source code is licensed under the Apache License, Version 2.0.
+
+Third-party runtime dependencies (all MIT-licensed unless noted):
+
+  better-sqlite3    MIT          https://github.com/WiseLibs/better-sqlite3
+  electron           MIT          https://github.com/electron/electron
+  music-metadata     MIT          https://github.com/borewit/music-metadata
+  react              MIT          https://github.com/facebook/react
+  react-dom          MIT          https://github.com/facebook/react
+  zod                MIT          https://github.com/colinhacks/zod
+
+Key dev dependencies:
+
+  typescript         Apache-2.0   https://github.com/microsoft/TypeScript
+  vite               MIT          https://github.com/vitejs/vite
+  vitest             MIT          https://github.com/vitest-dev/vitest
+  esbuild            MIT          https://github.com/evanw/esbuild
+  eslint             MIT          https://github.com/eslint/eslint
+
+The complete list with links is in docs/third-party-attribution.md.
+
+The iTunesDB parser is based on community-documented reverse-engineering
+(ipodlinux.org). No Apple proprietary code or libraries are used.

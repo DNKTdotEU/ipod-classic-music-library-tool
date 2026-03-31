@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
-import type { AppConfig } from "./config";
+import type { AppConfig } from "./config.js";
 
 export function runStartupHealthChecks(db: Database.Database, config: AppConfig): void {
   const dbDir = path.dirname(config.dbPath);

@@ -8,7 +8,15 @@ const rank: Record<LogLevel, number> = {
 };
 
 export class Logger {
-  constructor(private readonly level: LogLevel) {}
+  constructor(private level: LogLevel) {}
+
+  setLevel(level: LogLevel): void {
+    this.level = level;
+  }
+
+  getLevel(): LogLevel {
+    return this.level;
+  }
 
   private emit(level: LogLevel, message: string, context?: Record<string, unknown>) {
     if (rank[level] < rank[this.level]) return;
@@ -18,8 +26,6 @@ export class Logger {
       message,
       context
     };
-    // Structured logs keep CI and local debugging predictable.
-    // eslint-disable-next-line no-console
     console.log(JSON.stringify(payload));
   }
 

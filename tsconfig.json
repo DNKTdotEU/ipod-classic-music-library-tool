@@ -10,7 +10,8 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "jsx": "react-jsx",
-    "types": ["node"]
+    "types": ["node", "react", "react-dom"]
   },
-  "include": ["src", "electron", "scripts", "tests", "vite.config.ts"]
+  "include": ["src", "scripts", "tests", "vite.config.ts"],
+  "exclude": ["dist-electron", "node_modules"]
 }

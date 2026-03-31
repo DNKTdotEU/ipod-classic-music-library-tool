@@ -1,4 +1,4 @@
-import type { Envelope } from "../ipc/contracts";
+import type { Envelope } from "../ipc/contracts.js";
 
 export class AppRuntimeError extends Error {
   constructor(

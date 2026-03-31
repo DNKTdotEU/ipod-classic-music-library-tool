@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.electron.json",
+  "include": ["electron/preload.ts"],
+  "exclude": []
+}

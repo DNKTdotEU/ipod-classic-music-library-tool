@@ -7,12 +7,102 @@ export const startScanRequestSchema = z.object({
   mode: scanModeSchema
 });
 
+export const jobTypeSchema = z.enum(["scan", "bulk_duplicate", "metadata_batch", "artwork_batch"]);
+
+export const progressPhaseSchema = z.enum([
+  "scan",
+  "analyze",
+  "group",
+  "finalize",
+  "prepare",
+  "process",
+  "commit"
+]);
+
+export const progressStatusSchema = z.enum(["running", "completed", "cancelled", "error"]);
+
 export const progressEventSchema = z.object({
   jobId: z.string(),
-  phase: z.enum(["scan", "analyze", "group", "finalize"]),
+  jobType: jobTypeSchema,
+  phase: progressPhaseSchema,
   processed: z.number().nonnegative(),
   total: z.number().positive(),
-  message: z.string()
+  message: z.string(),
+  status: progressStatusSchema
+});
+
+export const pickPathsRequestSchema = z.object({
+  mode: z.enum(["directory", "file"]),
+  multiple: z.boolean(),
+  title: z.string().optional()
+});
+
+export const applyDecisionSchema = z.object({
+  groupId: z.string().min(1),
+  keepFileId: z.string().min(1)
+});
+
+export const deleteDuplicateCandidateSchema = z.object({
+  groupId: z.string().min(1),
+  fileId: z.string().min(1)
+});
+
+export const skipDuplicateGroupSchema = z.object({
+  groupId: z.string().min(1)
+});
+
+export const dialogConfirmSchema = z.object({
+  message: z.string().min(1),
+  detail: z.string().optional(),
+  confirmButton: z.string().optional(),
+  checkboxLabel: z.string().optional()
+});
+
+export const logLevelSchema = z.enum(["debug", "info", "warn", "error"]);
+
+export const userSettingsSchema = z.object({
+  defaultScanMode: scanModeSchema,
+  lastScanFolders: z.array(z.string()),
+  logLevel: logLevelSchema,
+  suppressKeepConfirm: z.boolean(),
+  suppressDeleteConfirm: z.boolean(),
+  suppressExperimentalDevicesNotice: z.boolean()
+});
+
+export const userSettingsPatchSchema = z.object({
+  defaultScanMode: scanModeSchema.optional(),
+  lastScanFolders: z.array(z.string()).optional(),
+  logLevel: logLevelSchema.optional(),
+  suppressKeepConfirm: z.boolean().optional(),
+  suppressDeleteConfirm: z.boolean().optional(),
+  suppressExperimentalDevicesNotice: z.boolean().optional()
+});
+
+export const browseDeviceSchema = z.object({
+  mountPath: z.string().min(1),
+  relativePath: z.string()
+});
+
+export const exportTracksSchema = z.object({
+  mountPath: z.string().min(1),
+  tracks: z.array(z.object({
+    filePath: z.string(),
+    title: z.string(),
+    artist: z.string(),
+    ext: z.string()
+  })),
+  destDir: z.string().min(1)
+});
+
+export const copyToDeviceSchema = z.object({
+  mountPath: z.string().min(1),
+  destRelative: z.string(),
+  sourcePaths: z.array(z.string()).min(1)
+});
+
+export const deleteFromDeviceSchema = z.object({
+  mountPath: z.string().min(1),
+  relativePaths: z.array(z.string()).min(1)
 });
 
 export const appErrorSchema = z.object({
@@ -23,7 +113,14 @@ export const appErrorSchema = z.object({
 
 export type ScanMode = z.infer<typeof scanModeSchema>;
 export type StartScanRequest = z.infer<typeof startScanRequestSchema>;
+export type JobType = z.infer<typeof jobTypeSchema>;
+export type ProgressPhase = z.infer<typeof progressPhaseSchema>;
 export type ProgressEvent = z.infer<typeof progressEventSchema>;
+export type ProgressPayload = Omit<ProgressEvent, "jobId" | "jobType" | "status"> & { status?: ProgressEvent["status"] };
+export type PickPathsRequest = z.infer<typeof pickPathsRequestSchema>;
+export type DeleteDuplicateCandidateRequest = z.infer<typeof deleteDuplicateCandidateSchema>;
+export type UserSettings = z.infer<typeof userSettingsSchema>;
+export type UserSettingsPatch = z.infer<typeof userSettingsPatchSchema>;
 export type AppError = z.infer<typeof appErrorSchema>;
 
 export type Envelope<T> = {
@@ -34,13 +131,4 @@ export type Envelope<T> = {
   error: AppError;
 };
 
-export const IPC_CHANNELS = {
-  START_SCAN: "scan:start",
-  CANCEL_JOB: "jobs:cancel",
-  GET_DASHBOARD: "dashboard:get",
-  GET_DUPLICATES: "duplicates:get",
-  APPLY_DECISION: "duplicates:decision",
-  GET_QUARANTINE: "quarantine:get",
-  RESTORE_QUARANTINE: "quarantine:restore",
-  ON_PROGRESS: "jobs:progress"
-} as const;
+export { IPC_CHANNELS } from "./channels.js";

@@ -3,50 +3,62 @@
 This matrix maps PRD user stories and acceptance criteria to implementation modules and tests.
 
 ## Epic 1: Add and scan library
-- `1.1` Folder management and path validation -> `ScanService`, `scan.setup` UI, `ipc.scan.start`.
-- `1.2` Supported file filtering and skip reporting -> `ScanService`, `ingest.supportedExtensions`, scan report panel.
-- `1.3` Progress/cancel and incomplete labeling -> `JobCoordinator`, `ScanProgress` UI, `ipc.jobs.cancel`.
+
+- `1.1` Folder management and path validation -> `ScanService`, Scan UI tab, `ipc:scan:start`.
+- `1.2` Supported file filtering -> `fileMedia.ts` extension sets, `discoverFiles()` in `ScanService`.
+- `1.3` Progress/cancel -> `JobCoordinator`, `JobProgressCard`, `ipc:jobs:cancel`.
 
 ## Epic 2: Detect duplicates
-- `2.1` Exact duplicate grouping -> `DuplicateService.computeExactGroups()`, `duplicate_groups` table.
-- `2.2` Likely duplicates and confidence -> `AnalysisService`, `DuplicateService.computeLikelyGroups()`.
-- `2.3` Sensitivity control -> `Rule/Profile` settings, scan setup control (`strict|balanced|loose`).
+
+- `2.1` Exact duplicate grouping -> `DuplicateDetectionService.detect()` (hash grouping), `duplicate_groups` + `duplicate_group_items` tables.
+- `2.2` Likely duplicates and confidence -> `DuplicateDetectionService` (normalized title+artist, duration tolerance, confidence scoring).
+- `2.3` Sensitivity control -> Scan mode (`strict|balanced|loose`) in `startScanRequestSchema`.
 
 ## Epic 3: Safe review
-- `3.1` Side-by-side compare model -> `CompareView` and `compare DTO`.
-- `3.2` Difference highlighting and mismatch flags -> renderer compare diff helpers.
-- `3.3` In-screen preview player -> `PreviewPlayer` component and media URL bridge.
+
+- `3.1` Duplicate stepping model -> `DuplicatesView` with group/candidate navigation.
+- `3.2` File info display -> Format, bitrate, duration, size, metadata completeness, artwork status in `DuplicatesView`.
+- `3.3` In-screen preview player -> `<audio>`/`<video>` via `media:` protocol bridge.
 
 ## Epic 4: Keep decisions
-- `4.1` Manual keep/select/defer -> `DuplicateDecisionService`.
-- `4.2` Keep-first by sort order -> deterministic sorting strategy in duplicate list.
-- `4.3` Smart keep actions -> `RulesService.evaluateGroup()`.
-- `4.4` Ask-on-conflict queue -> conflict queue status in `duplicate_groups`.
 
-## Epic 5: Bulk rules
-- `5.1` Rule creation and reuse -> `rules` table + rules UI.
-- `5.2` Bulk preview and confirmation -> `BulkPreview` API + confirmation modal.
+- `4.1` Manual keep/delete -> `DuplicateService.applyDecision()`, `deleteCandidateFile()`.
+- `4.2` Unresolved filtering -> `DuplicatesView` "Show unresolved only" toggle.
 
-## Epic 6: Metadata
-- `6.1` Single/batch edit -> `MetadataService.updateTags()`.
-- `6.2` Missing/suspicious metadata filtering -> dashboard chips + issue filters.
-- `6.3` Normalization helpers -> `MetadataService.normalize()`.
+## Epic 5: Bulk operations
 
-## Epic 7: Artwork
-- `7.1` Search by release fields -> `ArtworkService.search()`.
-- `7.2` Quality preview and cover-type indication -> artwork results model.
-- `7.3` Missing-artwork step-through workflow -> artwork queue and apply/skip/defer actions.
+- `5.1` Bulk duplicate refresh -> `runBulkDuplicateRefresh()` with `DuplicateDetectionService`.
 
 ## Epic 8: Quarantine and history
-- `8.1` Move to quarantine with reason -> `QuarantineService.move()`, `quarantine_items`.
-- `8.2` Restore flow -> `QuarantineService.restore()`.
-- `8.3` Full audit trail -> `HistoryService.record()`, `history_events`.
+
+- `8.1` Move to quarantine with reason -> `QuarantineService.move()` with actual file operations (copy + unlink).
+- `8.2` Restore flow -> `QuarantineService.restore()` with file restoration.
+- `8.3` Permanent delete -> `QuarantineService.deletePermanently()`.
+- `8.4` Full audit trail -> `HistoryRepository.record()` + `HistoryRepository.list()`, `HistoryView` UI.
 
 ## Epic 9: Dashboard
-- `9.1` Health counters with deep links -> `DashboardService.getMetrics()`.
-- `9.2` Progress counters -> resolved/unresolved metric aggregation.
+
+- `9.1` Health counters with deep links -> `DashboardRepository.getMetrics()`, clickable cards in `App.tsx`.
+- `9.2` Resolved/unresolved counts -> Dashboard metric aggregation.
 
 ## Test mapping
-- Unit: duplicate scoring, rules evaluation, metadata normalization.
-- Integration: IPC contracts, migrations, quarantine/restore transactions.
-- E2E: scan -> review -> quarantine -> restore, metadata batch edits, artwork apply flow.
+
+### Unit tests
+
+| Test file | Covers |
+|-----------|--------|
+| `tests/unit/duplicateService.test.ts` | `DuplicateService.applyDecision` |
+| `tests/unit/duplicateDetection.test.ts` | Exact and likely duplicate grouping |
+| `tests/unit/quarantineService.test.ts` | Move, restore, deletePermanently with real files |
+| `tests/unit/repositories.test.ts` | All repository CRUD, corrupt JSON handling |
+| `tests/unit/jobCoordinator.test.ts` | Run, cancel, error propagation |
+| `tests/unit/preferencesStore.test.ts` | Load, save, merge, corrupt file recovery |
+| `tests/unit/dashboardService.test.ts` | Metric aggregation |
+| `tests/unit/progressUtils.test.ts` | Terminal progress detection (structured status) |
+| `tests/unit/metadataService.test.ts` | Tag normalization |
+
+### Integration tests
+
+| Test file | Covers |
+|-----------|--------|
+| `tests/integration/migrations.test.ts` | Schema migration application |
