@@ -398,6 +398,7 @@ export function registerHandlers(db: Database.Database, userDataPath: string): v
         parsed.data.rootPath,
         parsed.data.relativePath,
         parsed.data.preset,
+        parsed.data.genre,
         parsed.data.lowBitrateKbps,
         parsed.data.shortDurationSec
       );

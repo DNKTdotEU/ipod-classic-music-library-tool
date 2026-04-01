@@ -31,7 +31,7 @@ export type ExplorerMetadata = {
   } | null;
 };
 
-type SmartPreset = "missing_tags" | "low_bitrate" | "short_duration" | "duplicate_like_name" | "non_audio";
+type SmartPreset = "missing_tags" | "low_bitrate" | "short_duration" | "duplicate_like_name" | "non_audio" | "genre";
 
 export class ExplorerService {
   constructor(
@@ -206,6 +206,7 @@ export class ExplorerService {
     rootPath: string,
     relativePath: string,
     preset: SmartPreset,
+    genre?: string,
     lowBitrateKbps = 128,
     shortDurationSec = 30
   ): Promise<string[]> {
@@ -233,6 +234,10 @@ export class ExplorerService {
       }
       if (preset === "missing_tags") {
         if (!md.common.title || !md.common.artist || !md.common.album) out.push(rel);
+      } else if (preset === "genre") {
+        const g = (md.common.genre?.[0] ?? "").trim().toLowerCase();
+        const want = (genre ?? "").trim().toLowerCase();
+        if (want.length > 0 && g.includes(want)) out.push(rel);
       } else if (preset === "low_bitrate") {
         const kbps = md.format.bitrate ? md.format.bitrate / 1000 : 0;
         if (kbps > 0 && kbps < lowBitrateKbps) out.push(rel);

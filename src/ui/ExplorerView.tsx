@@ -5,7 +5,7 @@ import type { ExplorerMetadata } from "../ipc/types";
 type Envelope<T> = { ok: true; data: T } | { ok: false; error: { message: string } };
 type Entry = { name: string; type: "directory" | "file"; sizeBytes: number; modifiedAt: string };
 
-type SmartPreset = "missing_tags" | "low_bitrate" | "short_duration" | "duplicate_like_name" | "non_audio";
+type SmartPreset = "missing_tags" | "low_bitrate" | "short_duration" | "duplicate_like_name" | "non_audio" | "genre";
 
 type Props = {
   onStatus: (message: string, type: "info" | "success" | "error") => void;
@@ -31,6 +31,8 @@ export function ExplorerView({ onStatus, busy }: Props): ReactElement {
   const [activeFile, setActiveFile] = useState<string>("");
   const [metadata, setMetadata] = useState<ExplorerMetadata | null>(null);
   const [renamePattern, setRenamePattern] = useState("{artist} - {title}");
+  const [genreFilter, setGenreFilter] = useState("");
+  const [genreFilteredPaths, setGenreFilteredPaths] = useState<Set<string> | null>(null);
   const [previewingRename, setPreviewingRename] = useState(false);
   const [ignoredPaths, setIgnoredPaths] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
@@ -41,10 +43,12 @@ export function ExplorerView({ onStatus, busy }: Props): ReactElement {
     const q = search.trim().toLowerCase();
     return entries.filter((e) => {
       if (filter !== "all" && e.type !== filter) return false;
+      const rel = currentPath ? `${currentPath}/${e.name}` : e.name;
+      if (genreFilteredPaths && !genreFilteredPaths.has(rel)) return false;
       if (!q) return true;
       return e.name.toLowerCase().includes(q);
     });
-  }, [entries, search, filter]);
+  }, [entries, search, filter, currentPath, genreFilteredPaths]);
 
   const rankedVisible = useMemo(() => {
     return [...visible].sort((a, b) => {
@@ -57,6 +61,18 @@ export function ExplorerView({ onStatus, busy }: Props): ReactElement {
       return a.name.localeCompare(b.name);
     });
   }, [visible, currentPath, selected]);
+
+  const visibleRelativePaths = useMemo(
+    () => rankedVisible.map((entry) => (currentPath ? `${currentPath}/${entry.name}` : entry.name)),
+    [rankedVisible, currentPath]
+  );
+
+  const selectedVisibleCount = useMemo(
+    () => visibleRelativePaths.filter((rel) => selected.has(rel)).length,
+    [visibleRelativePaths, selected]
+  );
+
+  const allVisibleSelected = visibleRelativePaths.length > 0 && selectedVisibleCount === visibleRelativePaths.length;
 
   function keepListScrollStable(update: () => void) {
     const list = listRef.current;
@@ -171,7 +187,7 @@ export function ExplorerView({ onStatus, busy }: Props): ReactElement {
 
   async function runSmartFilter(preset: SmartPreset) {
     if (!api || !rootPath) return;
-    const res = (await api.explorerSmartFilter(rootPath, currentPath, preset, 128, 30)) as Envelope<{ relativePaths: string[] }>;
+    const res = (await api.explorerSmartFilter(rootPath, currentPath, preset, undefined, 128, 30)) as Envelope<{ relativePaths: string[] }>;
     if (!res.ok) {
       onStatus(res.error.message, "error");
       return;
@@ -182,6 +198,22 @@ export function ExplorerView({ onStatus, busy }: Props): ReactElement {
     });
     setSelected(new Set(filtered));
     onStatus(`Smart filter selected ${filtered.length} item(s).`, "info");
+  }
+
+  async function applyGenreFilter() {
+    if (!api || !rootPath) return;
+    if (!genreFilter.trim()) {
+      setGenreFilteredPaths(null);
+      onStatus("Genre filter cleared.", "info");
+      return;
+    }
+    const res = (await api.explorerSmartFilter(rootPath, currentPath, "genre", genreFilter.trim())) as Envelope<{ relativePaths: string[] }>;
+    if (!res.ok) {
+      onStatus(res.error.message, "error");
+      return;
+    }
+    setGenreFilteredPaths(new Set(res.data.relativePaths));
+    onStatus(`Genre filter applied: ${res.data.relativePaths.length} match(es).`, "info");
   }
 
   async function previewBulkRename() {
@@ -218,6 +250,20 @@ export function ExplorerView({ onStatus, busy }: Props): ReactElement {
     }
     onStatus(`Renamed ${res.data.renamed.length} item(s).${res.data.failed.length ? ` ${res.data.failed.length} failed.` : ""}`, res.data.failed.length ? "error" : "success");
     await refresh();
+  }
+
+  function toggleSelectAllVisible() {
+    keepListScrollStable(() => {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        if (allVisibleSelected) {
+          for (const rel of visibleRelativePaths) next.delete(rel);
+        } else {
+          for (const rel of visibleRelativePaths) next.add(rel);
+        }
+        return next;
+      });
+    });
   }
 
   useEffect(() => {
@@ -285,6 +331,34 @@ export function ExplorerView({ onStatus, busy }: Props): ReactElement {
               <option value="directory">Folders</option>
             </select>
             <span className="library-count">{visible.length} item(s)</span>
+            <input
+              className="library-filter"
+              value={genreFilter}
+              disabled={busy}
+              onChange={(e) => setGenreFilter(e.target.value)}
+              placeholder="Filter by genre (e.g. rock)"
+            />
+            <button type="button" onClick={() => void applyGenreFilter()} disabled={busy}>
+              Apply genre
+            </button>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => {
+                setGenreFilter("");
+                setGenreFilteredPaths(null);
+              }}
+              disabled={busy || (!genreFilter && !genreFilteredPaths)}
+            >
+              Clear genre
+            </button>
+            <button
+              type="button"
+              onClick={() => toggleSelectAllVisible()}
+              disabled={busy || visibleRelativePaths.length === 0}
+            >
+              {allVisibleSelected ? "Clear visible selection" : "Select all visible"}
+            </button>
           </div>
           <div className="explorer-smart-filters">
             <button type="button" onClick={() => void runSmartFilter("missing_tags")} disabled={busy}>Missing tags</button>

@@ -44,7 +44,8 @@ declare global {
       explorerSmartFilter: (
         rootPath: string,
         relativePath: string,
-        preset: "missing_tags" | "low_bitrate" | "short_duration" | "duplicate_like_name" | "non_audio",
+        preset: "missing_tags" | "low_bitrate" | "short_duration" | "duplicate_like_name" | "non_audio" | "genre",
+        genre?: string,
         lowBitrateKbps?: number,
         shortDurationSec?: number
       ) => Promise<unknown>;

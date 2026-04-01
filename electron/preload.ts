@@ -54,10 +54,11 @@ const api = {
   explorerSmartFilter: (
     rootPath: string,
     relativePath: string,
-    preset: "missing_tags" | "low_bitrate" | "short_duration" | "duplicate_like_name" | "non_audio",
+    preset: "missing_tags" | "low_bitrate" | "short_duration" | "duplicate_like_name" | "non_audio" | "genre",
+    genre?: string,
     lowBitrateKbps?: number,
     shortDurationSec?: number
-  ) => ipcRenderer.invoke(IPC_CHANNELS.EXPLORER_SMART_FILTER, { rootPath, relativePath, preset, lowBitrateKbps, shortDurationSec }),
+  ) => ipcRenderer.invoke(IPC_CHANNELS.EXPLORER_SMART_FILTER, { rootPath, relativePath, preset, genre, lowBitrateKbps, shortDurationSec }),
   detectIpods: () => ipcRenderer.invoke(IPC_CHANNELS.DETECT_IPODS),
   getIpodLibrary: (mountPath: string) => ipcRenderer.invoke(IPC_CHANNELS.GET_IPOD_LIBRARY, mountPath),
   queryIpodLibraryTracks: (query: { mountPath: string; search?: string; genre?: string; limit?: number; offset?: number }) =>

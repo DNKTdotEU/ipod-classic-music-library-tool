@@ -162,7 +162,8 @@ export const explorerBulkRenameSchema = z.object({
 export const explorerSmartFilterSchema = z.object({
   rootPath: z.string().min(1),
   relativePath: z.string().default(""),
-  preset: z.enum(["missing_tags", "low_bitrate", "short_duration", "duplicate_like_name", "non_audio"]),
+  preset: z.enum(["missing_tags", "low_bitrate", "short_duration", "duplicate_like_name", "non_audio", "genre"]),
+  genre: z.string().optional(),
   lowBitrateKbps: z.number().int().min(32).max(512).optional(),
   shortDurationSec: z.number().int().min(5).max(120).optional()
 });
