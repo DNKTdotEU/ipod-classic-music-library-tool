@@ -140,6 +140,7 @@ export type ExplorerMetadata = {
     title: string | null;
     artist: string | null;
     album: string | null;
+    genre: string | null;
     durationSec: number | null;
     bitrate: number | null;
     sampleRate: number | null;

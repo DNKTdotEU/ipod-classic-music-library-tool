@@ -1014,6 +1014,15 @@ button:disabled {
   gap: 12px;
   align-items: start;
   min-height: 0;
+  position: relative;
+}
+
+.explorer-main-busy-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  background: rgba(15, 23, 42, 0.35);
+  pointer-events: all;
 }
 
 .explorer-preview-panel {
@@ -1055,6 +1064,22 @@ button:disabled {
 .explorer-main .explorer-list {
   max-height: calc(100vh - 220px);
   overflow-y: auto;
+}
+
+.explorer-action-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: #93c5fd;
+  font-size: 13px;
+}
+
+.explorer-inline-spinner {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  border-width: 2px;
 }
 
 /* ── Device info ── */

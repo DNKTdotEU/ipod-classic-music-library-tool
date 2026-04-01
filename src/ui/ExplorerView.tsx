@@ -20,6 +20,19 @@ function formatBytes(bytes: number): string {
   return `${n.toFixed(idx === 0 ? 0 : 1)} ${units[idx]}`;
 }
 
+function splitName(filePath: string): { stem: string; ext: string } {
+  const slash = Math.max(filePath.lastIndexOf("/"), filePath.lastIndexOf("\\"));
+  const filename = slash >= 0 ? filePath.slice(slash + 1) : filePath;
+  const dot = filename.lastIndexOf(".");
+  if (dot <= 0) return { stem: filename, ext: "" };
+  return { stem: filename.slice(0, dot), ext: filename.slice(dot) };
+}
+
+function safeTokenValue(value: string | null | undefined): string {
+  if (!value) return "";
+  return value.replace(/[<>:"/\\|?*\u0000-\u001F]/g, " ").replace(/\s+/g, " ").trim();
+}
+
 export function ExplorerView({ onStatus, busy }: Props): ReactElement {
   const api = window.appApi;
   const [rootPath, setRootPath] = useState("");
@@ -36,6 +49,7 @@ export function ExplorerView({ onStatus, busy }: Props): ReactElement {
   const [previewingRename, setPreviewingRename] = useState(false);
   const [ignoredPaths, setIgnoredPaths] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
@@ -73,6 +87,17 @@ export function ExplorerView({ onStatus, busy }: Props): ReactElement {
   );
 
   const allVisibleSelected = visibleRelativePaths.length > 0 && selectedVisibleCount === visibleRelativePaths.length;
+  const uiBusy = busy || loading || previewingRename || actionLoading !== null;
+
+  async function withActionLoading(label: string, action: () => Promise<void>) {
+    setActionLoading(label);
+    onStatus(`${label}...`, "info");
+    try {
+      await action();
+    } finally {
+      setActionLoading(null);
+    }
+  }
 
   function keepListScrollStable(update: () => void) {
     const list = listRef.current;
@@ -128,128 +153,174 @@ export function ExplorerView({ onStatus, busy }: Props): ReactElement {
   }
 
   async function refresh() {
-    if (!rootPath) return;
+    if (!rootPath || uiBusy) return;
     await browse(rootPath, currentPath);
   }
 
   async function cleanupSelected() {
-    if (!api || !rootPath || selected.size === 0) return;
-    const relPaths = Array.from(selected);
-    const confirm = (await api.confirmDialog({
-      message: `Delete ${relPaths.length} selected item(s)?`,
-      detail: "This permanently deletes files/folders from disk.",
-      confirmButton: "Delete selected"
-    })) as Envelope<{ confirmed: boolean }>;
-    if (!confirm.ok || !confirm.data.confirmed) return;
-    const res = (await api.explorerDelete(rootPath, relPaths)) as Envelope<{ deleted: string[]; failed: string[] }>;
-    if (!res.ok) {
-      onStatus(res.error.message, "error");
-      return;
-    }
-    const failed = res.data.failed.length;
-    onStatus(
-      `Deleted ${res.data.deleted.length} item(s).${failed > 0 ? ` ${failed} failed.` : ""}`,
-      failed > 0 ? "error" : "success"
-    );
-    await refresh();
-  }
-
-  async function moveSelectedToQuarantine() {
-    if (!api || !rootPath || selected.size === 0) return;
-    const relPaths = Array.from(selected);
-    const confirm = (await api.confirmDialog({
-      message: `Move ${relPaths.length} selected item(s) to quarantine?`,
-      detail: "Files will be moved out of your library and can be restored from Quarantine.",
-      confirmButton: "Move to quarantine"
-    })) as Envelope<{ confirmed: boolean }>;
-    if (!confirm.ok || !confirm.data.confirmed) return;
-    const res = (await api.explorerQuarantine(rootPath, relPaths)) as Envelope<{ moved: string[]; failed: string[] }>;
-    if (!res.ok) {
-      onStatus(res.error.message, "error");
-      return;
-    }
-    const failed = res.data.failed.length;
-    onStatus(`Moved ${res.data.moved.length} item(s) to quarantine.${failed > 0 ? ` ${failed} failed.` : ""}`, failed > 0 ? "error" : "success");
-    await refresh();
-  }
-
-  async function addToIgnore() {
-    if (!api || !rootPath || selected.size === 0) return;
-    const relPaths = Array.from(selected);
-    const res = (await api.explorerIgnore(rootPath, relPaths, "add")) as Envelope<{ ignoredExplorerPaths: string[] }>;
-    if (!res.ok) {
-      onStatus(res.error.message, "error");
-      return;
-    }
-    setIgnoredPaths(res.data.ignoredExplorerPaths);
-    onStatus(`Added ${relPaths.length} path(s) to ignore list.`, "success");
-  }
-
-  async function runSmartFilter(preset: SmartPreset) {
-    if (!api || !rootPath) return;
-    const res = (await api.explorerSmartFilter(rootPath, currentPath, preset, undefined, 128, 30)) as Envelope<{ relativePaths: string[] }>;
-    if (!res.ok) {
-      onStatus(res.error.message, "error");
-      return;
-    }
-    const filtered = res.data.relativePaths.filter((rel) => {
-      if (!currentPath) return true;
-      return rel.startsWith(`${currentPath}/`);
-    });
-    setSelected(new Set(filtered));
-    onStatus(`Smart filter selected ${filtered.length} item(s).`, "info");
-  }
-
-  async function applyGenreFilter() {
-    if (!api || !rootPath) return;
-    if (!genreFilter.trim()) {
-      setGenreFilteredPaths(null);
-      onStatus("Genre filter cleared.", "info");
-      return;
-    }
-    const res = (await api.explorerSmartFilter(rootPath, currentPath, "genre", genreFilter.trim())) as Envelope<{ relativePaths: string[] }>;
-    if (!res.ok) {
-      onStatus(res.error.message, "error");
-      return;
-    }
-    setGenreFilteredPaths(new Set(res.data.relativePaths));
-    onStatus(`Genre filter applied: ${res.data.relativePaths.length} match(es).`, "info");
-  }
-
-  async function previewBulkRename() {
-    if (!api || !rootPath || selected.size === 0) return;
-    setPreviewingRename(true);
-    try {
-      const relPaths = Array.from(selected).sort();
-      const items = relPaths.map((rel, idx) => ({
-        fromRelativePath: rel,
-        toFilename: `${renamePattern.replace("{index}", String(idx + 1))}${rel.includes(".") ? rel.slice(rel.lastIndexOf(".")) : ""}`
-      }));
-      const res = (await api.explorerBulkRename(rootPath, items, true)) as Envelope<{ renamed: Array<{ from: string; to: string }>; failed: string[] }>;
+    if (!api || !rootPath || selected.size === 0 || uiBusy) return;
+    await withActionLoading("Deleting selected items", async () => {
+      const relPaths = Array.from(selected);
+      const confirm = (await api.confirmDialog({
+        message: `Delete ${relPaths.length} selected item(s)?`,
+        detail: "This permanently deletes files/folders from disk.",
+        confirmButton: "Delete selected"
+      })) as Envelope<{ confirmed: boolean }>;
+      if (!confirm.ok || !confirm.data.confirmed) return;
+      const res = (await api.explorerDelete(rootPath, relPaths)) as Envelope<{ deleted: string[]; failed: string[] }>;
       if (!res.ok) {
         onStatus(res.error.message, "error");
         return;
       }
-      onStatus(`Rename preview: ${res.data.renamed.length} item(s) ready.${res.data.failed.length ? ` ${res.data.failed.length} invalid.` : ""}`, "info");
-    } finally {
-      setPreviewingRename(false);
-    }
+      const failed = res.data.failed.length;
+      onStatus(
+        `Deleted ${res.data.deleted.length} item(s).${failed > 0 ? ` ${failed} failed.` : ""}`,
+        failed > 0 ? "error" : "success"
+      );
+      await refresh();
+    });
+  }
+
+  async function moveSelectedToQuarantine() {
+    if (!api || !rootPath || selected.size === 0 || uiBusy) return;
+    await withActionLoading("Moving selected items to quarantine", async () => {
+      const relPaths = Array.from(selected);
+      const confirm = (await api.confirmDialog({
+        message: `Move ${relPaths.length} selected item(s) to quarantine?`,
+        detail: "Files will be moved out of your library and can be restored from Quarantine.",
+        confirmButton: "Move to quarantine"
+      })) as Envelope<{ confirmed: boolean }>;
+      if (!confirm.ok || !confirm.data.confirmed) return;
+      const res = (await api.explorerQuarantine(rootPath, relPaths)) as Envelope<{ moved: string[]; failed: string[] }>;
+      if (!res.ok) {
+        onStatus(res.error.message, "error");
+        return;
+      }
+      const failed = res.data.failed.length;
+      onStatus(`Moved ${res.data.moved.length} item(s) to quarantine.${failed > 0 ? ` ${failed} failed.` : ""}`, failed > 0 ? "error" : "success");
+      await refresh();
+    });
+  }
+
+  async function addToIgnore() {
+    if (!api || !rootPath || selected.size === 0 || uiBusy) return;
+    await withActionLoading("Updating ignore list", async () => {
+      const relPaths = Array.from(selected);
+      const res = (await api.explorerIgnore(rootPath, relPaths, "add")) as Envelope<{ ignoredExplorerPaths: string[] }>;
+      if (!res.ok) {
+        onStatus(res.error.message, "error");
+        return;
+      }
+      setIgnoredPaths(res.data.ignoredExplorerPaths);
+      onStatus(`Added ${relPaths.length} path(s) to ignore list.`, "success");
+    });
+  }
+
+  async function runSmartFilter(preset: SmartPreset) {
+    if (!api || !rootPath || uiBusy) return;
+    await withActionLoading("Applying smart filter", async () => {
+      const res = (await api.explorerSmartFilter(rootPath, currentPath, preset, undefined, 128, 30)) as Envelope<{ relativePaths: string[] }>;
+      if (!res.ok) {
+        onStatus(res.error.message, "error");
+        return;
+      }
+      const filtered = res.data.relativePaths.filter((rel) => {
+        if (!currentPath) return true;
+        return rel.startsWith(`${currentPath}/`);
+      });
+      setSelected(new Set(filtered));
+      onStatus(`Smart filter selected ${filtered.length} item(s).`, "info");
+    });
+  }
+
+  async function applyGenreFilter() {
+    if (!api || !rootPath || uiBusy) return;
+    await withActionLoading("Applying genre filter", async () => {
+      if (!genreFilter.trim()) {
+        setGenreFilteredPaths(null);
+        onStatus("Genre filter cleared.", "info");
+        return;
+      }
+      const res = (await api.explorerSmartFilter(rootPath, currentPath, "genre", genreFilter.trim())) as Envelope<{ relativePaths: string[] }>;
+      if (!res.ok) {
+        onStatus(res.error.message, "error");
+        return;
+      }
+      setGenreFilteredPaths(new Set(res.data.relativePaths));
+      onStatus(`Genre filter applied: ${res.data.relativePaths.length} match(es).`, "info");
+    });
+  }
+
+  async function previewBulkRename() {
+    if (!api || !rootPath || selected.size === 0 || uiBusy) return;
+    setPreviewingRename(true);
+    await withActionLoading("Preparing rename preview", async () => {
+      try {
+        const relPaths = Array.from(selected).sort();
+        const items = await Promise.all(relPaths.map(async (rel, idx) => {
+          const { stem, ext } = splitName(rel);
+          const md = (await api.explorerGetMetadata(rootPath, rel)) as Envelope<ExplorerMetadata>;
+          const title = safeTokenValue(md.ok ? md.data.media?.title : null) || stem;
+          const artist = safeTokenValue(md.ok ? md.data.media?.artist : null) || "Unknown Artist";
+          const album = safeTokenValue(md.ok ? md.data.media?.album : null) || "Unknown Album";
+          const genre = safeTokenValue(md.ok ? md.data.media?.genre : null) || "";
+          const rendered = renamePattern
+            .replaceAll("{index}", String(idx + 1))
+            .replaceAll("{name}", stem)
+            .replaceAll("{ext}", ext ? ext.slice(1) : "")
+            .replaceAll("{title}", title)
+            .replaceAll("{artist}", artist)
+            .replaceAll("{album}", album)
+            .replaceAll("{genre}", genre)
+            .trim();
+          const base = rendered.length > 0 ? rendered : stem;
+          const target = base.includes(".") || ext.length === 0 ? base : `${base}${ext}`;
+          return { fromRelativePath: rel, toFilename: target };
+        }));
+        const res = (await api.explorerBulkRename(rootPath, items, true)) as Envelope<{ renamed: Array<{ from: string; to: string }>; failed: string[] }>;
+        if (!res.ok) {
+          onStatus(res.error.message, "error");
+          return;
+        }
+        onStatus(`Rename preview: ${res.data.renamed.length} item(s) ready.${res.data.failed.length ? ` ${res.data.failed.length} invalid.` : ""}`, "info");
+      } finally {
+        setPreviewingRename(false);
+      }
+    });
   }
 
   async function applyBulkRename() {
-    if (!api || !rootPath || selected.size === 0) return;
-    const relPaths = Array.from(selected).sort();
-    const items = relPaths.map((rel, idx) => ({
-      fromRelativePath: rel,
-      toFilename: `${renamePattern.replace("{index}", String(idx + 1))}${rel.includes(".") ? rel.slice(rel.lastIndexOf(".")) : ""}`
-    }));
-    const res = (await api.explorerBulkRename(rootPath, items, false)) as Envelope<{ renamed: Array<{ from: string; to: string }>; failed: string[] }>;
-    if (!res.ok) {
-      onStatus(res.error.message, "error");
-      return;
-    }
-    onStatus(`Renamed ${res.data.renamed.length} item(s).${res.data.failed.length ? ` ${res.data.failed.length} failed.` : ""}`, res.data.failed.length ? "error" : "success");
-    await refresh();
+    if (!api || !rootPath || selected.size === 0 || uiBusy) return;
+    await withActionLoading("Applying bulk rename", async () => {
+      const relPaths = Array.from(selected).sort();
+      const items = await Promise.all(relPaths.map(async (rel, idx) => {
+        const { stem, ext } = splitName(rel);
+        const md = (await api.explorerGetMetadata(rootPath, rel)) as Envelope<ExplorerMetadata>;
+        const title = safeTokenValue(md.ok ? md.data.media?.title : null) || stem;
+        const artist = safeTokenValue(md.ok ? md.data.media?.artist : null) || "Unknown Artist";
+        const album = safeTokenValue(md.ok ? md.data.media?.album : null) || "Unknown Album";
+        const genre = safeTokenValue(md.ok ? md.data.media?.genre : null) || "";
+        const rendered = renamePattern
+          .replaceAll("{index}", String(idx + 1))
+          .replaceAll("{name}", stem)
+          .replaceAll("{ext}", ext ? ext.slice(1) : "")
+          .replaceAll("{title}", title)
+          .replaceAll("{artist}", artist)
+          .replaceAll("{album}", album)
+          .replaceAll("{genre}", genre)
+          .trim();
+        const base = rendered.length > 0 ? rendered : stem;
+        const target = base.includes(".") || ext.length === 0 ? base : `${base}${ext}`;
+        return { fromRelativePath: rel, toFilename: target };
+      }));
+      const res = (await api.explorerBulkRename(rootPath, items, false)) as Envelope<{ renamed: Array<{ from: string; to: string }>; failed: string[] }>;
+      if (!res.ok) {
+        onStatus(res.error.message, "error");
+        return;
+      }
+      onStatus(`Renamed ${res.data.renamed.length} item(s).${res.data.failed.length ? ` ${res.data.failed.length} failed.` : ""}`, res.data.failed.length ? "error" : "success");
+      await refresh();
+    });
   }
 
   function toggleSelectAllVisible() {
@@ -294,11 +365,11 @@ export function ExplorerView({ onStatus, busy }: Props): ReactElement {
   return (
     <section className="explorer-view explorer-split">
       <div className="explorer-header">
-        <button type="button" onClick={() => void pickRoot()} disabled={busy}>Choose root folder…</button>
-        <button type="button" onClick={() => void refresh()} disabled={!rootPath || loading || busy}>Refresh</button>
-        <button type="button" onClick={() => void moveSelectedToQuarantine()} disabled={selected.size === 0 || busy}>Move to quarantine</button>
-        <button type="button" onClick={() => void addToIgnore()} disabled={selected.size === 0 || busy}>Ignore in scans</button>
-        <button type="button" className="btn-danger" onClick={() => void cleanupSelected()} disabled={selected.size === 0 || busy}>
+        <button type="button" onClick={() => void pickRoot()} disabled={uiBusy}>Choose root folder…</button>
+        <button type="button" onClick={() => void refresh()} disabled={!rootPath || uiBusy}>Refresh</button>
+        <button type="button" onClick={() => void moveSelectedToQuarantine()} disabled={selected.size === 0 || uiBusy}>Move to quarantine</button>
+        <button type="button" onClick={() => void addToIgnore()} disabled={selected.size === 0 || uiBusy}>Ignore in scans</button>
+        <button type="button" className="btn-danger" onClick={() => void cleanupSelected()} disabled={selected.size === 0 || uiBusy}>
           Cleanup selected ({selected.size})
         </button>
       </div>
@@ -321,11 +392,11 @@ export function ExplorerView({ onStatus, busy }: Props): ReactElement {
             <input
               className="library-filter"
               value={search}
-              disabled={busy}
+              disabled={uiBusy}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search current folder..."
             />
-            <select value={filter} onChange={(e) => setFilter(e.target.value as "all" | "file" | "directory")} className="library-filter" disabled={busy}>
+            <select value={filter} onChange={(e) => setFilter(e.target.value as "all" | "file" | "directory")} className="library-filter" disabled={uiBusy}>
               <option value="all">All</option>
               <option value="file">Files</option>
               <option value="directory">Folders</option>
@@ -334,11 +405,11 @@ export function ExplorerView({ onStatus, busy }: Props): ReactElement {
             <input
               className="library-filter"
               value={genreFilter}
-              disabled={busy}
+              disabled={uiBusy}
               onChange={(e) => setGenreFilter(e.target.value)}
               placeholder="Filter by genre (e.g. rock)"
             />
-            <button type="button" onClick={() => void applyGenreFilter()} disabled={busy}>
+            <button type="button" onClick={() => void applyGenreFilter()} disabled={uiBusy}>
               Apply genre
             </button>
             <button
@@ -348,41 +419,49 @@ export function ExplorerView({ onStatus, busy }: Props): ReactElement {
                 setGenreFilter("");
                 setGenreFilteredPaths(null);
               }}
-              disabled={busy || (!genreFilter && !genreFilteredPaths)}
+              disabled={uiBusy || (!genreFilter && !genreFilteredPaths)}
             >
               Clear genre
             </button>
             <button
               type="button"
               onClick={() => toggleSelectAllVisible()}
-              disabled={busy || visibleRelativePaths.length === 0}
+              disabled={uiBusy || visibleRelativePaths.length === 0}
             >
               {allVisibleSelected ? "Clear visible selection" : "Select all visible"}
             </button>
           </div>
           <div className="explorer-smart-filters">
-            <button type="button" onClick={() => void runSmartFilter("missing_tags")} disabled={busy}>Missing tags</button>
-            <button type="button" onClick={() => void runSmartFilter("low_bitrate")} disabled={busy}>Low bitrate</button>
-            <button type="button" onClick={() => void runSmartFilter("short_duration")} disabled={busy}>Short songs</button>
-            <button type="button" onClick={() => void runSmartFilter("duplicate_like_name")} disabled={busy}>Duplicate-like names</button>
-            <button type="button" onClick={() => void runSmartFilter("non_audio")} disabled={busy}>Non-audio</button>
+            <button type="button" onClick={() => void runSmartFilter("missing_tags")} disabled={uiBusy}>Missing tags</button>
+            <button type="button" onClick={() => void runSmartFilter("low_bitrate")} disabled={uiBusy}>Low bitrate</button>
+            <button type="button" onClick={() => void runSmartFilter("short_duration")} disabled={uiBusy}>Short songs</button>
+            <button type="button" onClick={() => void runSmartFilter("duplicate_like_name")} disabled={uiBusy}>Duplicate-like names</button>
+            <button type="button" onClick={() => void runSmartFilter("non_audio")} disabled={uiBusy}>Non-audio</button>
           </div>
           <div className="explorer-rename-toolbar">
             <input
               className="library-filter"
               value={renamePattern}
               onChange={(e) => setRenamePattern(e.target.value)}
-              disabled={busy}
+              disabled={uiBusy}
               placeholder="Rename pattern, e.g. Track {index}"
             />
-            <button type="button" onClick={() => void previewBulkRename()} disabled={selected.size === 0 || previewingRename || busy}>Preview rename</button>
-            <button type="button" onClick={() => void applyBulkRename()} disabled={selected.size === 0 || busy}>Apply rename</button>
+            <span className="muted">Tokens: {"{index}"}, {"{name}"}, {"{title}"}, {"{artist}"}, {"{album}"}, {"{genre}"}, {"{ext}"}</span>
+            <button type="button" onClick={() => void previewBulkRename()} disabled={selected.size === 0 || previewingRename || uiBusy}>Preview rename</button>
+            <button type="button" onClick={() => void applyBulkRename()} disabled={selected.size === 0 || uiBusy}>Apply rename</button>
           </div>
           <p className="muted">Ignored paths: {ignoredPaths.length}</p>
+          {actionLoading && (
+            <p className="explorer-action-loading" aria-live="polite">
+              <span className="global-busy-spinner explorer-inline-spinner" />
+              {actionLoading}...
+            </p>
+          )}
           {loading ? (
             <p className="muted">Loading…</p>
           ) : (
             <div className="explorer-main">
+              {actionLoading && <div className="explorer-main-busy-overlay" />}
               <div className="explorer-list" ref={listRef}>
               {currentPath && (
                 <button
@@ -459,6 +538,7 @@ export function ExplorerView({ onStatus, busy }: Props): ReactElement {
                       <span>Title</span><strong>{metadata.media?.title ?? "—"}</strong>
                       <span>Artist</span><strong>{metadata.media?.artist ?? "—"}</strong>
                       <span>Album</span><strong>{metadata.media?.album ?? "—"}</strong>
+                      <span>Genre</span><strong>{metadata.media?.genre ?? "—"}</strong>
                       <span>Duration</span><strong>{metadata.media?.durationSec ? `${Math.round(metadata.media.durationSec)} sec` : "—"}</strong>
                       <span>Bitrate</span><strong>{metadata.media?.bitrate ? `${Math.round(metadata.media.bitrate / 1000)} kbps` : "—"}</strong>
                       <span>Sample rate</span><strong>{metadata.media?.sampleRate ? `${metadata.media.sampleRate} Hz` : "—"}</strong>

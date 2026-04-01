@@ -23,6 +23,7 @@ export type ExplorerMetadata = {
     title: string | null;
     artist: string | null;
     album: string | null;
+    genre: string | null;
     durationSec: number | null;
     bitrate: number | null;
     sampleRate: number | null;
@@ -91,6 +92,7 @@ export class ExplorerService {
           title: metadata.common.title ?? null,
           artist: metadata.common.artist ?? null,
           album: metadata.common.album ?? null,
+          genre: metadata.common.genre?.[0] ?? null,
           durationSec: metadata.format.duration ?? null,
           bitrate: metadata.format.bitrate ? Math.round(metadata.format.bitrate) : null,
           sampleRate: metadata.format.sampleRate ?? null,
@@ -152,9 +154,35 @@ export class ExplorerService {
     items: Array<{ fromRelativePath: string; toFilename: string }>,
     dryRun: boolean
   ): Promise<{ renamed: Array<{ from: string; to: string }>; failed: string[] }> {
-    const renamed: Array<{ from: string; to: string }> = [];
+    const planned: Array<{ from: string; to: string }> = [];
     const failed: string[] = [];
     const usedTargets = new Set<string>();
+    const fileExists = async (p: string): Promise<boolean> => {
+      try {
+        await fs.access(p);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
+    const splitName = (fileName: string): { stem: string; ext: string } => {
+      const ext = path.extname(fileName);
+      return { stem: ext ? fileName.slice(0, -ext.length) : fileName, ext };
+    };
+
+    const uniqueTargetFor = async (candidateAbs: string): Promise<string> => {
+      const dir = path.dirname(candidateAbs);
+      const { stem, ext } = splitName(path.basename(candidateAbs));
+      let n = 1;
+      let next = candidateAbs;
+      while (usedTargets.has(next) || (!dryRun && await fileExists(next))) {
+        n += 1;
+        next = path.join(dir, `${stem} (${n})${ext}`);
+      }
+      return next;
+    };
+
     for (const item of items) {
       try {
         if (item.toFilename.includes("/") || item.toFilename.includes("\\")) {
@@ -162,37 +190,32 @@ export class ExplorerService {
         }
         const fromAbs = this.resolveWithinRoot(rootPath, item.fromRelativePath);
         const fromDir = path.dirname(fromAbs);
-        const toAbs = this.resolveWithinRoot(rootPath, this.toRelative(rootPath, path.join(fromDir, item.toFilename)));
+        const requestedAbs = this.resolveWithinRoot(rootPath, this.toRelative(rootPath, path.join(fromDir, item.toFilename)));
+        const toAbs = await uniqueTargetFor(requestedAbs);
         if (fromAbs === toAbs) continue;
-        if (usedTargets.has(toAbs)) throw new Error("duplicate rename target in batch");
         usedTargets.add(toAbs);
         await fs.access(fromAbs);
-        if (!dryRun) {
-          let targetExists = false;
-          try {
-            await fs.access(toAbs);
-            targetExists = true;
-          } catch {
-            // target does not exist, continue
-          }
-          if (targetExists) throw new Error("target already exists");
-        }
-        renamed.push({ from: item.fromRelativePath, to: this.toRelative(rootPath, toAbs) });
+        planned.push({ from: item.fromRelativePath, to: this.toRelative(rootPath, toAbs) });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         failed.push(`${item.fromRelativePath} (${msg})`);
       }
     }
+
+    const renamed: Array<{ from: string; to: string }> = [];
     if (!dryRun) {
-      for (const r of renamed) {
+      for (const r of planned) {
         const fromAbs = this.resolveWithinRoot(rootPath, r.from);
         const toAbs = this.resolveWithinRoot(rootPath, r.to);
         try {
           await fs.rename(fromAbs, toAbs);
+          renamed.push(r);
         } catch (err) {
           failed.push(`${r.from} (${err instanceof Error ? err.message : String(err)})`);
         }
       }
+    } else {
+      renamed.push(...planned);
     }
     this.historyRepository.record("explorer_rename", dryRun ? "Explorer rename preview generated" : "Explorer batch rename executed", {
       dryRun,
