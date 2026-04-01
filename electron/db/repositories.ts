@@ -107,6 +107,34 @@ export class DuplicateRepository {
       .run(JSON.stringify(updated), new Date().toISOString(), groupId);
     return true;
   }
+
+  replaceCandidates(groupId: string, candidates: DuplicateGroup["candidates"], status: DuplicateGroup["status"]): boolean {
+    const row = this.db.prepare("SELECT id, summary FROM duplicate_groups WHERE id = ?").get(groupId) as
+      | { id: string; summary: string | null }
+      | undefined;
+    if (!row) return false;
+    let parsed: GroupSummary = { title: "Unknown", artist: "Unknown", candidates: [] };
+    if (row.summary) {
+      try {
+        parsed = JSON.parse(row.summary) as GroupSummary;
+      } catch {
+        /* corrupt JSON — use defaults */
+      }
+    }
+    const updated: GroupSummary = { ...parsed, candidates };
+    const tx = this.db.transaction(() => {
+      this.db.prepare("DELETE FROM duplicate_group_items WHERE group_id = ?").run(groupId);
+      const insertItem = this.db.prepare("INSERT INTO duplicate_group_items (group_id, file_copy_id) VALUES (?, ?)");
+      for (const candidate of candidates) {
+        insertItem.run(groupId, candidate.id);
+      }
+      this.db
+        .prepare("UPDATE duplicate_groups SET summary = ?, status = ?, updated_at = ? WHERE id = ?")
+        .run(JSON.stringify(updated), status, new Date().toISOString(), groupId);
+    });
+    tx();
+    return true;
+  }
 }
 
 export class QuarantineRepository {

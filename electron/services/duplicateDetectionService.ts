@@ -100,7 +100,8 @@ function buildLikelyKeys(
   if (albumNorm.length > 0) {
     keys.set(`tad:${titleSig}::${albumNorm}::${durBucket}`, "title_album_duration");
   } else {
-    keys.set(`td:${titleSig}::${durBucket}`, "title_album_duration");
+    const artistPart = hasUsableArtist ? artistNorm : "unknown";
+    keys.set(`td:${titleSig}::${artistPart}::${durBucket}`, "title_album_duration");
   }
   if (allowTitleOnlyLikely) {
     keys.set(`t:${titleSig}`, "title_only");
@@ -188,7 +189,7 @@ export class DuplicateDetectionService {
     const durationThreshold = options?.durationThresholdSec ?? DEFAULT_DURATION_THRESHOLD_SEC;
     const likelyMinConfidence = options?.likelyMinConfidence ?? DEFAULT_MIN_CONFIDENCE;
     const preserveResolved = options?.preserveResolved ?? true;
-    const allowTitleOnlyLikely = options?.allowTitleOnlyLikely ?? true;
+    const allowTitleOnlyLikely = options?.allowTitleOnlyLikely ?? false;
     const requireArtistForLikely = options?.requireArtistForLikely ?? false;
 
     const allCopies = this.db.prepare("SELECT * FROM file_copies").all() as FileCopyRow[];
@@ -251,7 +252,7 @@ export class DuplicateDetectionService {
       for (const { key, keyType } of keys) {
         const existing = byNormalizedKey.get(key);
         if (existing) {
-          existing.copies.push(copy);
+          if (!existing.copies.some((c) => c.id === copy.id)) existing.copies.push(copy);
         } else {
           byNormalizedKey.set(key, { copies: [copy], keyType });
         }
@@ -265,10 +266,13 @@ export class DuplicateDetectionService {
       copies: FileCopyRow[];
       track: TrackRow | undefined;
     }> = [];
+    const seenLikelySignatures = new Set<string>();
 
     for (const [, entry] of byNormalizedKey) {
       const { copies, keyType } = entry;
       if (copies.length < 2) continue;
+      const signature = signatureForCopyIds(copies.map((c) => c.id));
+      if (seenLikelySignatures.has(signature)) continue;
       const confidence = computeLikelyConfidence(copies, trackMap, durationThreshold, keyType);
       if (confidence < likelyMinConfidence) continue;
       const track = trackMap.get(copies[0]!.track_id);
@@ -279,6 +283,7 @@ export class DuplicateDetectionService {
         copies,
         track
       });
+      seenLikelySignatures.add(signature);
     }
 
     if (isCancelled?.()) return { exactGroups: 0, likelyGroups: 0 };

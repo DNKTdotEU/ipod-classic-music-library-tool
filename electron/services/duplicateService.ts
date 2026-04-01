@@ -27,24 +27,24 @@ export class DuplicateService {
     const others = group.candidates.filter((c) => c.id !== keepFileId);
     const deleted: string[] = [];
     const failed: string[] = [];
+    const failedIds = new Set<string>();
 
     for (const candidate of others) {
       try {
         await fs.unlink(candidate.path);
         this.trackRepository.removeFileCopyByPath(candidate.path);
-        this.duplicateRepository.removeCandidate(groupId, candidate.id);
         deleted.push(candidate.path);
       } catch (err) {
         const reason = err instanceof Error ? err.message : String(err);
         failed.push(`${candidate.path} (${reason})`);
+        failedIds.add(candidate.id);
       }
     }
 
     const remainingCount = 1 + failed.length;
     const resolved = remainingCount < 2;
-    if (resolved) {
-      this.duplicateRepository.markResolved(groupId);
-    }
+    const remainingCandidates = group.candidates.filter((candidate) => candidate.id === keepFileId || failedIds.has(candidate.id));
+    this.duplicateRepository.replaceCandidates(groupId, remainingCandidates, resolved ? "user_resolved" : "unreviewed");
     this.historyRepository.record("decision_applied", "Duplicate decision applied — kept file, deleted others", {
       groupId,
       keepFileId,
