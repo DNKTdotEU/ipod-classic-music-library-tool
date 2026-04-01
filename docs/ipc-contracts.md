@@ -21,6 +21,13 @@
 | `settings:get` | (none) | `Envelope<UserSettings>` |
 | `settings:set` | `UserSettingsPatch` | `Envelope<UserSettings>` |
 | `app:paths` | (none) | `Envelope<AppPathsInfo>` |
+| `explorer:list` | `{ rootPath: string; relativePath?: string }` | `Envelope<FsEntry[]>` |
+| `explorer:delete` | `{ rootPath: string; relativePaths: string[] }` | `Envelope<{ deleted: string[]; failed: string[] }>` |
+| `explorer:getMetadata` | `{ rootPath: string; relativePath: string }` | `Envelope<ExplorerMetadata>` |
+| `explorer:quarantine` | `{ rootPath: string; relativePaths: string[] }` | `Envelope<{ moved: string[]; failed: string[] }>` |
+| `explorer:ignore` | `{ rootPath: string; relativePaths: string[]; mode: "add" \| "remove" \| "replace" }` | `Envelope<{ ignoredExplorerPaths: string[] }>` |
+| `explorer:bulkRename` | `{ rootPath: string; items: { fromRelativePath: string; toFilename: string }[]; dryRun?: boolean }` | `Envelope<{ renamed: { from: string; to: string }[]; failed: string[] }>` |
+| `explorer:smartFilter` | `{ rootPath: string; relativePath?: string; preset: "missing_tags" \| "low_bitrate" \| "short_duration" \| "duplicate_like_name" \| "non_audio"; lowBitrateKbps?: number; shortDurationSec?: number }` | `Envelope<{ relativePaths: string[] }>` |
 | `devices:detect` | (none) | `Envelope<IpodDevice[]>` |
 | `devices:library` | `mountPath: string` | `Envelope<IpodLibrary>` |
 | `devices:browse` | `{ mountPath: string; relativePath: string }` | `Envelope<FsEntry[]>` |

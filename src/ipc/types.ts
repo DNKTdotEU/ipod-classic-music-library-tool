@@ -40,6 +40,7 @@ export type UserSettings = {
   suppressKeepConfirm: boolean;
   suppressDeleteConfirm: boolean;
   suppressExperimentalDevicesNotice: boolean;
+  ignoredExplorerPaths: string[];
 };
 
 export type UserSettingsPatch = Partial<UserSettings>;
@@ -127,4 +128,22 @@ export type FsEntry = {
   type: "directory" | "file";
   sizeBytes: number;
   modifiedAt: string;
+};
+
+export type ExplorerMetadata = {
+  relativePath: string;
+  absolutePath: string;
+  type: "file" | "directory";
+  sizeBytes: number;
+  modifiedAt: string;
+  media: {
+    title: string | null;
+    artist: string | null;
+    album: string | null;
+    durationSec: number | null;
+    bitrate: number | null;
+    sampleRate: number | null;
+    codec: string | null;
+    hasArtwork: boolean;
+  } | null;
 };

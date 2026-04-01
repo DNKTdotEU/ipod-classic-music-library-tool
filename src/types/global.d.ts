@@ -31,6 +31,23 @@ declare global {
       getSettings: () => Promise<unknown>;
       setSettings: (patch: UserSettingsPatch) => Promise<unknown>;
       getAppPaths: () => Promise<unknown>;
+      explorerList: (rootPath: string, relativePath: string) => Promise<unknown>;
+      explorerDelete: (rootPath: string, relativePaths: string[]) => Promise<unknown>;
+      explorerGetMetadata: (rootPath: string, relativePath: string) => Promise<unknown>;
+      explorerQuarantine: (rootPath: string, relativePaths: string[]) => Promise<unknown>;
+      explorerIgnore: (rootPath: string, relativePaths: string[], mode: "add" | "remove" | "replace") => Promise<unknown>;
+      explorerBulkRename: (
+        rootPath: string,
+        items: Array<{ fromRelativePath: string; toFilename: string }>,
+        dryRun?: boolean
+      ) => Promise<unknown>;
+      explorerSmartFilter: (
+        rootPath: string,
+        relativePath: string,
+        preset: "missing_tags" | "low_bitrate" | "short_duration" | "duplicate_like_name" | "non_audio",
+        lowBitrateKbps?: number,
+        shortDurationSec?: number
+      ) => Promise<unknown>;
       detectIpods: () => Promise<unknown>;
       getIpodLibrary: (mountPath: string) => Promise<unknown>;
       queryIpodLibraryTracks: (query: IpodLibraryTrackQuery) => Promise<unknown>;

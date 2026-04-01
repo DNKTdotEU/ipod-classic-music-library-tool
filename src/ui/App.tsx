@@ -6,6 +6,7 @@ import { DuplicatesView } from "./DuplicatesView";
 import { SettingsView } from "./SettingsView";
 import { HistoryView } from "./HistoryView";
 import { DevicesView } from "./DevicesView";
+import { ExplorerView } from "./ExplorerView";
 import { JOB_PANEL_TITLE, PHASE_LABEL } from "./progressLabels";
 
 type DashboardMetrics = {
@@ -48,7 +49,7 @@ type QuarantineItem = {
 
 type Envelope<T> = { ok: true; data: T } | { ok: false; error: { message: string } };
 
-const nav = ["Dashboard", "Scan", "Duplicates", "Quarantine", "History", "Devices", "Settings"] as const;
+const nav = ["Dashboard", "Scan", "Duplicates", "Quarantine", "History", "Explorer", "Devices", "Settings"] as const;
 
 const METRIC_LABELS: Record<string, { label: string; tab?: (typeof nav)[number] }> = {
   exactDuplicates: { label: "Exact Duplicates", tab: "Duplicates" },
@@ -141,6 +142,14 @@ export function App(): ReactElement {
 
   const scanRunning = activeJobIds.scan !== undefined;
   const bulkDuplicateRunning = activeJobIds.bulk_duplicate !== undefined;
+  const exportRunning = progress?.jobId === "ipod-export" && progress.status === "running";
+  const isAppBusy = scanRunning || bulkDuplicateRunning || exportRunning;
+
+  const guardIfBusy = useCallback((): boolean => {
+    if (!isAppBusy) return false;
+    showStatus("Process running, please wait", "info");
+    return true;
+  }, [isAppBusy, showStatus]);
 
   const liveScanProgress =
     scanRunning && activeJobIds.scan && progress && progress.jobId === activeJobIds.scan && progress.jobType === "scan"
@@ -157,6 +166,7 @@ export function App(): ReactElement {
       : null;
 
   async function addScanFolders() {
+    if (guardIfBusy()) return;
     if (!api) return;
     try {
       const result = (await api.pickPaths({
@@ -203,6 +213,7 @@ export function App(): ReactElement {
   }
 
   async function startLibraryScan() {
+    if (guardIfBusy()) return;
     if (!api || scanFolders.length === 0) return;
     try {
       const result = (await api.startScan(scanFolders, scanMode)) as Envelope<{ jobId: string }>;
@@ -241,6 +252,7 @@ export function App(): ReactElement {
   }
 
   async function resetScanData() {
+    if (guardIfBusy()) return;
     if (!api) return;
     try {
       const confirm = (await api.confirmDialog({
@@ -262,6 +274,7 @@ export function App(): ReactElement {
   }
 
   async function startBulkDuplicateRefresh() {
+    if (guardIfBusy()) return;
     if (!api) return;
     try {
       const result = (await api.startBulkDuplicateRefresh()) as Envelope<{ jobId: string }>;
@@ -300,6 +313,7 @@ export function App(): ReactElement {
   }
 
   async function applyKeep(groupId: string, keepFileId: string) {
+    if (guardIfBusy()) return;
     if (!api) return;
     try {
       const group = groups.find((g) => g.id === groupId);
@@ -349,6 +363,7 @@ export function App(): ReactElement {
   }
 
   async function skipDuplicateGroup(groupId: string) {
+    if (guardIfBusy()) return;
     if (!api) return;
     try {
       const result = (await api.skipDuplicateGroup(groupId)) as Envelope<{ skipped: boolean }>;
@@ -364,6 +379,7 @@ export function App(): ReactElement {
   }
 
   async function deleteDuplicateCandidate(groupId: string, fileId: string) {
+    if (guardIfBusy()) return;
     if (!api) return;
     try {
       if (!suppressDeleteConfirm) {
@@ -407,6 +423,7 @@ export function App(): ReactElement {
   }
 
   async function restoreItem(itemId: string) {
+    if (guardIfBusy()) return;
     if (!api) return;
     try {
       const result = (await api.restoreQuarantine(itemId)) as Envelope<{ restored: boolean }>;
@@ -418,6 +435,7 @@ export function App(): ReactElement {
   }
 
   async function deleteQuarantinePermanently(itemId: string) {
+    if (guardIfBusy()) return;
     if (!api) return;
     try {
       const confirm = (await api.confirmDialog({
@@ -464,6 +482,10 @@ export function App(): ReactElement {
             className={active === item ? "nav active" : "nav"}
             aria-current={active === item ? "page" : undefined}
             onClick={async () => {
+              if (isAppBusy) {
+                showStatus("Process running, please wait", "info");
+                return;
+              }
               if (item === "Devices" && !suppressExperimentalDevicesNotice && !devicesNoticeShownRef.current) {
                 devicesNoticeShownRef.current = true;
                 const confirm = (await api.confirmDialog({
@@ -625,6 +647,7 @@ export function App(): ReactElement {
             onSkipGroup={(gid) => skipDuplicateGroup(gid)}
             onRevealInFolder={(p) => revealInFolder(p)}
             pathToMediaUrl={(p) => api.pathToMediaUrl(p)}
+            busy={isAppBusy}
           />
         )}
 
@@ -655,9 +678,23 @@ export function App(): ReactElement {
         )}
 
         {active === "History" && <HistoryView onStatus={showStatus} />}
-        {active === "Devices" && <DevicesView onStatus={showStatus} />}
+        {active === "Explorer" && <ExplorerView onStatus={showStatus} busy={isAppBusy} />}
+        {active === "Devices" && <DevicesView onStatus={showStatus} busy={isAppBusy} />}
         {active === "Settings" && <SettingsView onApplied={applySettingsFromServer} onStatus={(msg) => showStatus(msg, "info")} />}
       </main>
+      {isAppBusy && (
+        <div
+          className="global-busy-overlay"
+          role="status"
+          aria-live="polite"
+          onClick={() => showStatus("Process running, please wait", "info")}
+        >
+          <div className="global-busy-dialog">
+            <div className="global-busy-spinner" />
+            <p>Processing... Please wait</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

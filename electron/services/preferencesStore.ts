@@ -12,6 +12,7 @@ export type StoredUserSettings = {
   suppressKeepConfirm: boolean;
   suppressDeleteConfirm: boolean;
   suppressExperimentalDevicesNotice: boolean;
+  ignoredExplorerPaths: string[];
 };
 
 const DEFAULTS: StoredUserSettings = {
@@ -23,7 +24,8 @@ const DEFAULTS: StoredUserSettings = {
   logLevel: "info",
   suppressKeepConfirm: false,
   suppressDeleteConfirm: false,
-  suppressExperimentalDevicesNotice: false
+  suppressExperimentalDevicesNotice: false,
+  ignoredExplorerPaths: []
 };
 
 function preferencesPath(userDataPath: string): string {
@@ -40,7 +42,8 @@ function merge(base: StoredUserSettings, patch: Partial<StoredUserSettings>): St
     logLevel: patch.logLevel ?? base.logLevel,
     suppressKeepConfirm: patch.suppressKeepConfirm ?? base.suppressKeepConfirm,
     suppressDeleteConfirm: patch.suppressDeleteConfirm ?? base.suppressDeleteConfirm,
-    suppressExperimentalDevicesNotice: patch.suppressExperimentalDevicesNotice ?? base.suppressExperimentalDevicesNotice
+    suppressExperimentalDevicesNotice: patch.suppressExperimentalDevicesNotice ?? base.suppressExperimentalDevicesNotice,
+    ignoredExplorerPaths: patch.ignoredExplorerPaths ?? base.ignoredExplorerPaths
   };
 }
 
@@ -77,6 +80,9 @@ export function loadPreferences(userDataPath: string): StoredUserSettings {
     const suppressKeepConfirm = typeof o.suppressKeepConfirm === "boolean" ? o.suppressKeepConfirm : DEFAULTS.suppressKeepConfirm;
     const suppressDeleteConfirm = typeof o.suppressDeleteConfirm === "boolean" ? o.suppressDeleteConfirm : DEFAULTS.suppressDeleteConfirm;
     const suppressExperimentalDevicesNotice = typeof o.suppressExperimentalDevicesNotice === "boolean" ? o.suppressExperimentalDevicesNotice : DEFAULTS.suppressExperimentalDevicesNotice;
+    const ignoredExplorerPaths = Array.isArray(o.ignoredExplorerPaths)
+      ? o.ignoredExplorerPaths.filter((x): x is string => typeof x === "string")
+      : DEFAULTS.ignoredExplorerPaths;
     return merge(DEFAULTS, {
       defaultScanMode,
       scanReconcileMode,
@@ -86,7 +92,8 @@ export function loadPreferences(userDataPath: string): StoredUserSettings {
       logLevel,
       suppressKeepConfirm,
       suppressDeleteConfirm,
-      suppressExperimentalDevicesNotice
+      suppressExperimentalDevicesNotice,
+      ignoredExplorerPaths
     });
   } catch {
     return { ...DEFAULTS };

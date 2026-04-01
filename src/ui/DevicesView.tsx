@@ -7,6 +7,7 @@ type SubTab = "library" | "explorer" | "info";
 
 type Props = {
   onStatus: (message: string, type: "info" | "success" | "error") => void;
+  busy: boolean;
 };
 
 const ALL_GENRES = "__all_genres__";
@@ -41,7 +42,7 @@ function normalizeGenre(value: string | null | undefined): string {
   return genre.length > 0 ? genre : UNKNOWN_GENRE;
 }
 
-export function DevicesView({ onStatus }: Props): ReactElement {
+export function DevicesView({ onStatus, busy }: Props): ReactElement {
   const api = window.appApi;
   const [devices, setDevices] = useState<IpodDevice[]>([]);
   const [scanning, setScanning] = useState(false);
@@ -315,7 +316,7 @@ export function DevicesView({ onStatus }: Props): ReactElement {
   return (
     <section className="devices-view">
       <div className="devices-toolbar">
-        <button type="button" onClick={() => void scanForDevices()} disabled={scanning}>
+        <button type="button" onClick={() => void scanForDevices()} disabled={scanning || busy}>
           {scanning ? "Scanning…" : "Scan for devices"}
         </button>
       </div>
@@ -328,6 +329,7 @@ export function DevicesView({ onStatus }: Props): ReactElement {
               type="button"
               className={`device-card ${selectedDevice?.id === d.id ? "device-card-selected" : ""}`}
               onClick={() => selectDevice(d)}
+              disabled={busy}
             >
               <strong className="device-card-name">{d.modelName}</strong>
               <span className="device-card-storage">{formatBytes(d.freeBytes)} free of {formatBytes(d.totalBytes)}</span>
@@ -351,6 +353,7 @@ export function DevicesView({ onStatus }: Props): ReactElement {
                 type="button"
                 className={`device-sub-nav-btn ${subTab === tab ? "active" : ""}`}
                 onClick={() => setSubTab(tab)}
+                disabled={busy}
               >
                 {tab === "library" ? "Library" : tab === "explorer" ? "File Explorer" : "Device Info"}
               </button>
@@ -370,11 +373,13 @@ export function DevicesView({ onStatus }: Props): ReactElement {
                       placeholder="Search tracks…"
                       value={libraryFilter}
                       onChange={(e) => setLibraryFilter(e.target.value)}
+                      disabled={busy}
                     />
                     <select
                       className="library-filter library-genre-filter"
                       value={selectedGenre}
                       onChange={(e) => setSelectedGenre(e.target.value)}
+                      disabled={busy}
                     >
                       <option value={ALL_GENRES}>All genres</option>
                       {genreOptions.map((genre) => (
@@ -391,6 +396,7 @@ export function DevicesView({ onStatus }: Props): ReactElement {
                           setLibraryFilter("");
                           setSelectedGenre(ALL_GENRES);
                         }}
+                        disabled={busy}
                       >
                         Clear filters
                       </button>
@@ -403,13 +409,13 @@ export function DevicesView({ onStatus }: Props): ReactElement {
                         Selected {selectedVisibleCount} visible / {selectedTrackIds.size} total{hasHiddenSelected ? " (includes hidden matches)" : ""}
                       </span>
                     )}
-                    <button type="button" onClick={() => void exportSelected()} disabled={selectedTrackIds.size === 0}>
+                    <button type="button" onClick={() => void exportSelected()} disabled={selectedTrackIds.size === 0 || busy}>
                       Export selected ({selectedTrackIds.size})
                     </button>
-                    <button type="button" onClick={() => void exportAll()}>
+                    <button type="button" onClick={() => void exportAll()} disabled={busy}>
                       Export all
                     </button>
-                    <button type="button" onClick={() => void loadLibrary()}>Reload</button>
+                    <button type="button" onClick={() => void loadLibrary()} disabled={busy}>Reload</button>
                   </div>
                   <div className="ipod-library-table-wrap">
                     <table className="ipod-library-table">
@@ -420,6 +426,7 @@ export function DevicesView({ onStatus }: Props): ReactElement {
                               type="checkbox"
                               checked={allVisibleSelected}
                               onChange={toggleAllTracks}
+                              disabled={busy}
                             />
                           </th>
                           <th>Title</th>
@@ -442,7 +449,7 @@ export function DevicesView({ onStatus }: Props): ReactElement {
                           filteredTracks.map((t) => (
                             <tr key={t.id} className={selectedTrackIds.has(t.id) ? "row-selected" : ""}>
                               <td className="col-checkbox">
-                                <input type="checkbox" checked={selectedTrackIds.has(t.id)} onChange={() => toggleTrack(t.id)} />
+                                <input type="checkbox" checked={selectedTrackIds.has(t.id)} onChange={() => toggleTrack(t.id)} disabled={busy} />
                               </td>
                               <td title={t.title}>{t.title || "(untitled)"}</td>
                               <td title={t.artist}>{t.artist || "—"}</td>
@@ -467,23 +474,23 @@ export function DevicesView({ onStatus }: Props): ReactElement {
           {subTab === "explorer" && (
             <div className="file-explorer">
               <div className="explorer-breadcrumbs">
-                <button type="button" onClick={() => void browsePath("")} className="breadcrumb-btn">/</button>
+                <button type="button" onClick={() => void browsePath("")} className="breadcrumb-btn" disabled={busy}>/</button>
                 {breadcrumbs.map((seg, i) => {
                   const pathUpTo = breadcrumbs.slice(0, i + 1).join("/");
                   return (
                     <span key={pathUpTo}>
                       <span className="breadcrumb-sep">/</span>
-                      <button type="button" onClick={() => void browsePath(pathUpTo)} className="breadcrumb-btn">{seg}</button>
+                      <button type="button" onClick={() => void browsePath(pathUpTo)} className="breadcrumb-btn" disabled={busy}>{seg}</button>
                     </span>
                   );
                 })}
               </div>
 
               <div className="explorer-toolbar">
-                <button type="button" onClick={() => void copyFilesToDevice()}>
+                <button type="button" onClick={() => void copyFilesToDevice()} disabled={busy}>
                   Copy files to device…
                 </button>
-                <button type="button" onClick={() => void browsePath(currentPath)} disabled={explorerLoading}>
+                <button type="button" onClick={() => void browsePath(currentPath)} disabled={explorerLoading || busy}>
                   Refresh
                 </button>
               </div>
@@ -501,6 +508,7 @@ export function DevicesView({ onStatus }: Props): ReactElement {
                         parts.pop();
                         void browsePath(parts.join("/"));
                       }}
+                      disabled={busy}
                     >
                       <span className="entry-icon">📁</span>
                       <span className="entry-name">..</span>
@@ -515,6 +523,7 @@ export function DevicesView({ onStatus }: Props): ReactElement {
                           type="button"
                           className="entry-link"
                           onClick={() => void browsePath(currentPath ? `${currentPath}/${entry.name}` : entry.name)}
+                          disabled={busy}
                         >
                           <span className="entry-icon">📁</span>
                           <span className="entry-name">{entry.name}</span>
@@ -528,7 +537,7 @@ export function DevicesView({ onStatus }: Props): ReactElement {
                       <span className="entry-size">{entry.type === "file" ? formatBytes(entry.sizeBytes) : ""}</span>
                       <span className="entry-date">{entry.modifiedAt ? new Date(entry.modifiedAt).toLocaleDateString() : ""}</span>
                       {entry.type === "file" && (
-                        <button type="button" className="btn-danger entry-delete" onClick={() => void deleteFile(entry)}>
+                        <button type="button" className="btn-danger entry-delete" onClick={() => void deleteFile(entry)} disabled={busy}>
                           Delete
                         </button>
                       )}

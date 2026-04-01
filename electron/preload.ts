@@ -36,6 +36,28 @@ const api = {
   getSettings: () => ipcRenderer.invoke(IPC_CHANNELS.GET_SETTINGS),
   setSettings: (patch: UserSettingsPatch) => ipcRenderer.invoke(IPC_CHANNELS.SET_SETTINGS, patch),
   getAppPaths: () => ipcRenderer.invoke(IPC_CHANNELS.GET_APP_PATHS),
+  explorerList: (rootPath: string, relativePath: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.EXPLORER_LIST, { rootPath, relativePath }),
+  explorerDelete: (rootPath: string, relativePaths: string[]) =>
+    ipcRenderer.invoke(IPC_CHANNELS.EXPLORER_DELETE, { rootPath, relativePaths }),
+  explorerGetMetadata: (rootPath: string, relativePath: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.EXPLORER_METADATA, { rootPath, relativePath }),
+  explorerQuarantine: (rootPath: string, relativePaths: string[]) =>
+    ipcRenderer.invoke(IPC_CHANNELS.EXPLORER_QUARANTINE, { rootPath, relativePaths }),
+  explorerIgnore: (rootPath: string, relativePaths: string[], mode: "add" | "remove" | "replace") =>
+    ipcRenderer.invoke(IPC_CHANNELS.EXPLORER_IGNORE, { rootPath, relativePaths, mode }),
+  explorerBulkRename: (
+    rootPath: string,
+    items: Array<{ fromRelativePath: string; toFilename: string }>,
+    dryRun = false
+  ) => ipcRenderer.invoke(IPC_CHANNELS.EXPLORER_BULK_RENAME, { rootPath, items, dryRun }),
+  explorerSmartFilter: (
+    rootPath: string,
+    relativePath: string,
+    preset: "missing_tags" | "low_bitrate" | "short_duration" | "duplicate_like_name" | "non_audio",
+    lowBitrateKbps?: number,
+    shortDurationSec?: number
+  ) => ipcRenderer.invoke(IPC_CHANNELS.EXPLORER_SMART_FILTER, { rootPath, relativePath, preset, lowBitrateKbps, shortDurationSec }),
   detectIpods: () => ipcRenderer.invoke(IPC_CHANNELS.DETECT_IPODS),
   getIpodLibrary: (mountPath: string) => ipcRenderer.invoke(IPC_CHANNELS.GET_IPOD_LIBRARY, mountPath),
   queryIpodLibraryTracks: (query: { mountPath: string; search?: string; genre?: string; limit?: number; offset?: number }) =>

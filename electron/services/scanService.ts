@@ -14,6 +14,7 @@ const BATCH_SIZE = 50;
 
 export async function discoverFiles(
   folders: string[],
+  ignoredRelativePaths: Set<string>,
   onProgress: (event: ProgressPayload) => void,
   isCancelled: () => boolean
 ): Promise<string[]> {
@@ -22,7 +23,7 @@ export async function discoverFiles(
   const seenRoots = new Set<string>();
   const visited = new Set<string>();
 
-  async function walk(dir: string): Promise<void> {
+  async function walk(dir: string, rootDir: string): Promise<void> {
     if (isCancelled()) return;
     let entries: fs.Dirent[];
     try {
@@ -36,9 +37,11 @@ export async function discoverFiles(
       if (entry.isDirectory()) {
         if (!visited.has(fullPath)) {
           visited.add(fullPath);
-          await walk(fullPath);
+          await walk(fullPath, rootDir);
         }
       } else if (entry.isFile() && isMediaFilePath(entry.name)) {
+        const rel = path.relative(rootDir, fullPath).replace(/\\/g, "/");
+        if (ignoredRelativePaths.has(rel)) continue;
         let fileKey = fullPath;
         try {
           const stat = await fsp.stat(fullPath);
@@ -66,7 +69,7 @@ export async function discoverFiles(
     if (seenRoots.has(dedupeRoot)) continue;
     seenRoots.add(dedupeRoot);
     onProgress({ phase: "scan", processed: files.length, total: 1, message: `Scanning ${folder}…` });
-    await walk(folder);
+    await walk(folder, folder);
   }
   return files;
 }
@@ -116,12 +119,18 @@ export class ScanService {
       reconcileMode: "full" | "incremental";
       likelyMinConfidence: number;
       likelyDurationThresholdSec: number;
+      ignoredRelativePaths?: string[];
     },
     onProgress: (event: ProgressPayload) => void,
     isCancelled: () => boolean
   ): Promise<void> {
     onProgress({ phase: "scan", processed: 0, total: 1, message: "Discovering audio files…" });
-    const files = await discoverFiles(folders, onProgress, isCancelled);
+    const files = await discoverFiles(
+      folders,
+      new Set((options.ignoredRelativePaths ?? []).map((p) => p.replace(/\\/g, "/"))),
+      onProgress,
+      isCancelled
+    );
 
     if (isCancelled()) {
       this.historyRepository.record("scan_cancelled", "Scan stopped by user", { jobId, folders });

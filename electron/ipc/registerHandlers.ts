@@ -10,6 +10,13 @@ import {
   deleteDuplicateCandidateSchema,
   skipDuplicateGroupSchema,
   dialogConfirmSchema,
+  explorerBulkRenameSchema,
+  explorerGetMetadataSchema,
+  explorerIgnoreSchema,
+  explorerDeleteSchema,
+  explorerListSchema,
+  explorerQuarantineSchema,
+  explorerSmartFilterSchema,
   exportTracksSchema,
   pickPathsRequestSchema,
   startScanRequestSchema,
@@ -28,6 +35,7 @@ import { JobCoordinator } from "../core/jobCoordinator.js";
 import { runBulkDuplicateRefresh } from "../services/bulkDuplicateRefreshJob.js";
 import { DuplicateDetectionService } from "../services/duplicateDetectionService.js";
 import * as ipodService from "../services/ipod/ipodService.js";
+import { ExplorerService } from "../services/explorerService.js";
 
 /**
  * Register IPC handlers once per app lifecycle. Do not call per BrowserWindow
@@ -45,6 +53,7 @@ export function registerHandlers(db: Database.Database, userDataPath: string): v
   const trackRepository = new TrackRepository(db);
   const duplicateService = new DuplicateService(duplicateRepository, historyRepository, trackRepository);
   const quarantineService = new QuarantineService(quarantineRepository, historyRepository, config.quarantineDir);
+  const explorerService = new ExplorerService(trackRepository, quarantineService, historyRepository);
   const duplicateDetectionService = new DuplicateDetectionService(db);
   const scanService = new ScanService(trackRepository, historyRepository, duplicateDetectionService);
 
@@ -87,7 +96,8 @@ export function registerHandlers(db: Database.Database, userDataPath: string): v
             {
               reconcileMode: userSettings.scanReconcileMode,
               likelyMinConfidence: userSettings.likelyMinConfidence,
-              likelyDurationThresholdSec: userSettings.likelyDurationThresholdSec
+              likelyDurationThresholdSec: userSettings.likelyDurationThresholdSec,
+              ignoredRelativePaths: userSettings.ignoredExplorerPaths
             },
             emit,
             isCancelled
@@ -301,6 +311,102 @@ export function registerHandlers(db: Database.Database, userDataPath: string): v
       preferencesPath: getPreferencesFilePath(userDataPath)
     })
   );
+
+  ipcMain.handle(IPC_CHANNELS.EXPLORER_LIST, async (_event, raw: unknown) => {
+    try {
+      const parsed = explorerListSchema.safeParse(raw);
+      if (!parsed.success) return fail(parsed.error.message, "BAD_REQUEST");
+      return ok(await explorerService.list(parsed.data.rootPath, parsed.data.relativePath));
+    } catch (error) {
+      logger.error("Explorer list failed", { error: String(error) });
+      return mapError(error);
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.EXPLORER_DELETE, async (_event, raw: unknown) => {
+    try {
+      const parsed = explorerDeleteSchema.safeParse(raw);
+      if (!parsed.success) return fail(parsed.error.message, "BAD_REQUEST");
+      return ok(await explorerService.delete(parsed.data.rootPath, parsed.data.relativePaths));
+    } catch (error) {
+      logger.error("Explorer delete failed", { error: String(error) });
+      return mapError(error);
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.EXPLORER_METADATA, async (_event, raw: unknown) => {
+    try {
+      const parsed = explorerGetMetadataSchema.safeParse(raw);
+      if (!parsed.success) return fail(parsed.error.message, "BAD_REQUEST");
+      return ok(await explorerService.getMetadata(parsed.data.rootPath, parsed.data.relativePath));
+    } catch (error) {
+      logger.error("Explorer metadata failed", { error: String(error) });
+      return mapError(error);
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.EXPLORER_QUARANTINE, (_event, raw: unknown) => {
+    try {
+      const parsed = explorerQuarantineSchema.safeParse(raw);
+      if (!parsed.success) return fail(parsed.error.message, "BAD_REQUEST");
+      return ok(explorerService.quarantine(parsed.data.rootPath, parsed.data.relativePaths));
+    } catch (error) {
+      logger.error("Explorer quarantine failed", { error: String(error) });
+      return mapError(error);
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.EXPLORER_IGNORE, (_event, raw: unknown) => {
+    try {
+      const parsed = explorerIgnoreSchema.safeParse(raw);
+      if (!parsed.success) return fail(parsed.error.message, "BAD_REQUEST");
+      const normalize = (p: string) => p.replace(/\\/g, "/");
+      const additions = parsed.data.relativePaths.map((rel) => normalize(explorerService.toRelative(parsed.data.rootPath, explorerService.resolveWithinRoot(parsed.data.rootPath, rel))));
+      const existing = new Set(userSettings.ignoredExplorerPaths.map(normalize));
+      if (parsed.data.mode === "replace") {
+        userSettings = savePreferences(userDataPath, { ignoredExplorerPaths: additions });
+      } else if (parsed.data.mode === "add") {
+        for (const p of additions) existing.add(p);
+        userSettings = savePreferences(userDataPath, { ignoredExplorerPaths: [...existing] });
+      } else {
+        for (const p of additions) existing.delete(p);
+        userSettings = savePreferences(userDataPath, { ignoredExplorerPaths: [...existing] });
+      }
+      return ok({ ignoredExplorerPaths: userSettings.ignoredExplorerPaths });
+    } catch (error) {
+      logger.error("Explorer ignore update failed", { error: String(error) });
+      return mapError(error);
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.EXPLORER_BULK_RENAME, async (_event, raw: unknown) => {
+    try {
+      const parsed = explorerBulkRenameSchema.safeParse(raw);
+      if (!parsed.success) return fail(parsed.error.message, "BAD_REQUEST");
+      return ok(await explorerService.bulkRename(parsed.data.rootPath, parsed.data.items, parsed.data.dryRun));
+    } catch (error) {
+      logger.error("Explorer bulk rename failed", { error: String(error) });
+      return mapError(error);
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.EXPLORER_SMART_FILTER, async (_event, raw: unknown) => {
+    try {
+      const parsed = explorerSmartFilterSchema.safeParse(raw);
+      if (!parsed.success) return fail(parsed.error.message, "BAD_REQUEST");
+      const relativePaths = await explorerService.applySmartFilter(
+        parsed.data.rootPath,
+        parsed.data.relativePath,
+        parsed.data.preset,
+        parsed.data.lowBitrateKbps,
+        parsed.data.shortDurationSec
+      );
+      return ok({ relativePaths });
+    } catch (error) {
+      logger.error("Explorer smart filter failed", { error: String(error) });
+      return mapError(error);
+    }
+  });
 
   ipcMain.handle(IPC_CHANNELS.DETECT_IPODS, async () => {
     try {

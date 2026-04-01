@@ -29,13 +29,13 @@ describe("discoverFiles", () => {
 
   it("returns only media files", async () => {
     const noop = vi.fn();
-    const files = await discoverFiles([tmpDir], noop, () => false);
+    const files = await discoverFiles([tmpDir], new Set(), noop, () => false);
     const basenames = files.map((f) => path.basename(f)).sort();
     expect(basenames).toEqual(["nested.wav", "song.mp3", "track.flac", "video.mp4"]);
   });
 
   it("excludes non-media files", async () => {
-    const files = await discoverFiles([tmpDir], vi.fn(), () => false);
+    const files = await discoverFiles([tmpDir], new Set(), vi.fn(), () => false);
     const basenames = files.map((f) => path.basename(f));
     expect(basenames).not.toContain("readme.txt");
     expect(basenames).not.toContain("cover.jpg");
@@ -44,14 +44,14 @@ describe("discoverFiles", () => {
   });
 
   it("scans nested directories", async () => {
-    const files = await discoverFiles([tmpDir], vi.fn(), () => false);
+    const files = await discoverFiles([tmpDir], new Set(), vi.fn(), () => false);
     const basenames = files.map((f) => path.basename(f));
     expect(basenames).toContain("nested.wav");
   });
 
   it("reports progress during scan", async () => {
     const progressFn = vi.fn();
-    await discoverFiles([tmpDir], progressFn, () => false);
+    await discoverFiles([tmpDir], new Set(), progressFn, () => false);
     expect(progressFn).toHaveBeenCalledWith(
       expect.objectContaining({ phase: "scan" })
     );
@@ -61,6 +61,7 @@ describe("discoverFiles", () => {
     let callCount = 0;
     const files = await discoverFiles(
       [tmpDir],
+      new Set(),
       vi.fn(),
       () => {
         callCount++;
@@ -71,7 +72,7 @@ describe("discoverFiles", () => {
   });
 
   it("returns empty array for nonexistent folder", async () => {
-    const files = await discoverFiles(["/nonexistent-folder-xyz"], vi.fn(), () => false);
+    const files = await discoverFiles(["/nonexistent-folder-xyz"], new Set(), vi.fn(), () => false);
     expect(files).toEqual([]);
   });
 
@@ -80,7 +81,7 @@ describe("discoverFiles", () => {
     fs.writeFileSync(path.join(subDir2, "extra.ogg"), "fake-audio");
 
     try {
-      const files = await discoverFiles([tmpDir, subDir2], vi.fn(), () => false);
+      const files = await discoverFiles([tmpDir, subDir2], new Set(), vi.fn(), () => false);
       const basenames = files.map((f) => path.basename(f));
       expect(basenames).toContain("extra.ogg");
       expect(basenames).toContain("song.mp3");
@@ -95,7 +96,7 @@ describe("discoverFiles", () => {
     fs.writeFileSync(first, "same-audio");
     fs.linkSync(first, second);
 
-    const files = await discoverFiles([tmpDir], vi.fn(), () => false);
+    const files = await discoverFiles([tmpDir], new Set(), vi.fn(), () => false);
     const sameFiles = files.filter((f) => path.basename(f).startsWith("same"));
     expect(sameFiles.length).toBe(1);
   });

@@ -18,6 +18,7 @@ Desktop-first application for cleaning duplicate music files, comparing variants
 - **Quarantine safety model** — files are physically moved to a quarantine directory (copy + unlink for cross-device safety). Restore or permanently delete from quarantine with full audit history.
 - **Dashboard** with human-readable metric cards linking to relevant views.
 - **History timeline** with paginated event log, expandable payloads, and event type badges.
+- **Explorer (song cleanup workspace)** — split-screen file browser with in-app audio/video preview, metadata inspector, smart cleanup filters (missing tags, low bitrate, short duration, duplicate-like names, non-audio), batch rename preview/apply, quarantine move, ignore-in-scan list, and safe delete actions.
 - **Settings** for scan mode, reconcile strategy (full vs incremental), likely-duplicate thresholds, folder defaults, log level, confirmation dialog preferences, and application path inspection.
 - **Devices (Experimental)** — detect connected iPod devices (Classic, Video, Nano, Mini, Shuffle), parse iTunesDB to browse the on-device music library, export tracks with human-readable filenames, and use the iPod as external file storage with a built-in file explorer.
 - **SQLite persistence** with migration framework, startup health checks, and WAL mode.
@@ -89,7 +90,7 @@ See product planning and architecture docs under `docs/`.
 
 ## Testing
 
-- **99 tests** across 14 test files (unit + integration).
+- **103 tests** across 15 test files (unit + integration).
 - Coverage configured with `v8` provider (run `npx vitest --coverage`).
 - See `docs/testing-strategy.md` for the testing approach.
 

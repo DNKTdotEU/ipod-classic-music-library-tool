@@ -22,6 +22,9 @@ All notable changes to this project will be documented in this file.
 - **Accessibility**: `aria-current` on navigation, `aria-live` status messages, `aria-label` on progress bars, `prefers-reduced-motion` media query, `role="alert"` on error boundary.
 - **ErrorBoundary recovery**: "Try again" button to reset error state without reload.
 - **Comprehensive test suite**: 99 tests across 14 files covering repositories, services, job coordinator, preferences, duplicate detection, quarantine operations, progress utilities, iPod parsers, model database, scan discovery, and error helpers.
+- **Explorer redesign**: Explorer is now a dedicated song cleanup workspace with split-screen navigation, media preview, metadata inspector, smart filters, ignore list management, quarantine actions, and bulk rename preview/apply.
+- **Explorer IPC expansion**: Added `explorer:getMetadata`, `explorer:quarantine`, `explorer:ignore`, `explorer:bulkRename`, and `explorer:smartFilter`.
+- **Explorer service tests**: Added unit coverage for path safety, delete/index sync, quarantine workflow integration, and non-audio smart filtering.
 - **Coverage configuration**: v8 coverage provider configured in Vitest.
 - **Testing strategy documentation**: `docs/testing-strategy.md`.
 - Production-readiness docs and governance files for public repository usage.
@@ -33,6 +36,7 @@ All notable changes to this project will be documented in this file.
 - **Duplicate detection reliability hardening**: duplicate grouping now preserves `user_resolved` status when the same candidate set reappears after refresh/rescan.
 - **Configurable duplicate detection**: likely-duplicate minimum confidence and duration threshold are now configurable through user settings.
 - **Configurable scan reconciliation**: scans now support `full` (prune stale records) and `incremental` (do not globally prune) reconciliation behavior.
+- **Ignored-path scan behavior**: scanner now accepts ignored Explorer paths and skips them during media discovery.
 - **`applyDecision` is now async**: Returns `{ ok, deleted, failed }` instead of a boolean, enabling the renderer to report per-file outcomes.
 - **`dialog:confirm` extended**: Supports optional `checkboxLabel` in request and returns `checkboxChecked` in response.
 - **DuplicatesView intro text**: Updated to explain the new "Keep This" destructive behavior.

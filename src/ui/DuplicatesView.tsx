@@ -36,6 +36,7 @@ type Props = {
   onSkipGroup: (groupId: string) => Promise<void>;
   onRevealInFolder: (filePath: string) => Promise<void>;
   pathToMediaUrl: (absolutePath: string) => string;
+  busy: boolean;
 };
 
 function formatBytes(bytes: number): string {
@@ -62,7 +63,8 @@ export function DuplicatesView({
   onDeleteCandidate,
   onSkipGroup,
   onRevealInFolder,
-  pathToMediaUrl
+  pathToMediaUrl,
+  busy
 }: Props): ReactElement {
   const [groupIndex, setGroupIndex] = useState(0);
   const [candidateIndex, setCandidateIndex] = useState(0);
@@ -135,7 +137,7 @@ export function DuplicatesView({
       )}
 
       <div className="scan-actions duplicates-toolbar">
-        <button type="button" onClick={() => void onStartBulkRefresh()} disabled={bulkDuplicateRunning}>
+        <button type="button" onClick={() => void onStartBulkRefresh()} disabled={bulkDuplicateRunning || busy}>
           Refresh duplicate index
         </button>
         <button type="button" onClick={() => void onStopBulkRefresh()} disabled={!bulkDuplicateRunning}>
@@ -145,6 +147,7 @@ export function DuplicatesView({
           <input
             type="checkbox"
             checked={showUnresolvedOnly}
+            disabled={busy}
             onChange={(e) => {
               setShowUnresolvedOnly(e.target.checked);
               setGroupIndex(0);
@@ -163,14 +166,14 @@ export function DuplicatesView({
       ) : (
         <>
           <div className="duplicate-nav duplicate-nav-groups">
-            <button type="button" onClick={goPrevGroup} disabled={filteredGroups.length <= 1}>
+            <button type="button" onClick={goPrevGroup} disabled={filteredGroups.length <= 1 || busy}>
               &larr; Previous group
             </button>
             <span className="duplicate-nav-label">
               Group {groupIndex + 1} of {filteredGroups.length}
               {!showUnresolvedOnly && unresolvedCount > 0 ? ` (${unresolvedCount} unresolved)` : ""}
             </span>
-            <button type="button" onClick={goNextGroup} disabled={filteredGroups.length <= 1}>
+            <button type="button" onClick={goNextGroup} disabled={filteredGroups.length <= 1 || busy}>
               Next group &rarr;
             </button>
           </div>
@@ -185,13 +188,13 @@ export function DuplicatesView({
               </p>
 
               <div className="duplicate-nav duplicate-nav-candidates">
-                <button type="button" onClick={goPrevCandidate} disabled={current.candidates.length <= 1}>
+                <button type="button" onClick={goPrevCandidate} disabled={current.candidates.length <= 1 || busy}>
                   &larr; Previous file
                 </button>
                 <span className="duplicate-nav-label">
                   File {candidateIndex + 1} of {current.candidates.length}
                 </span>
-                <button type="button" onClick={goNextCandidate} disabled={current.candidates.length <= 1}>
+                <button type="button" onClick={goNextCandidate} disabled={current.candidates.length <= 1 || busy}>
                   Next file &rarr;
                 </button>
               </div>
@@ -226,14 +229,14 @@ export function DuplicatesView({
                   )}
 
                   <div className="duplicate-actions">
-                    <button type="button" onClick={() => void onApplyKeep(current.id, selected.id)}>
+                    <button type="button" onClick={() => void onApplyKeep(current.id, selected.id)} disabled={busy}>
                       Keep This
                     </button>
                     <button
                       type="button"
                       className="btn-danger"
                       onClick={() => void onDeleteCandidate(current.id, selected.id)}
-                      disabled={!isMediaFilePath(selected.path)}
+                      disabled={!isMediaFilePath(selected.path) || busy}
                       title={
                         isMediaFilePath(selected.path)
                           ? "Permanently delete this file from disk"
@@ -246,11 +249,12 @@ export function DuplicatesView({
                       type="button"
                       className="btn-secondary"
                       onClick={() => void onSkipGroup(current.id)}
+                      disabled={busy}
                       title="Mark this group as resolved without deleting any files"
                     >
                       Skip
                     </button>
-                    <button type="button" onClick={() => void onRevealInFolder(selected.path)}>
+                    <button type="button" onClick={() => void onRevealInFolder(selected.path)} disabled={busy}>
                       Show in folder
                     </button>
                   </div>

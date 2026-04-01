@@ -70,7 +70,8 @@ export const userSettingsSchema = z.object({
   logLevel: logLevelSchema,
   suppressKeepConfirm: z.boolean(),
   suppressDeleteConfirm: z.boolean(),
-  suppressExperimentalDevicesNotice: z.boolean()
+  suppressExperimentalDevicesNotice: z.boolean(),
+  ignoredExplorerPaths: z.array(z.string())
 });
 
 export const userSettingsPatchSchema = z.object({
@@ -82,7 +83,8 @@ export const userSettingsPatchSchema = z.object({
   logLevel: logLevelSchema.optional(),
   suppressKeepConfirm: z.boolean().optional(),
   suppressDeleteConfirm: z.boolean().optional(),
-  suppressExperimentalDevicesNotice: z.boolean().optional()
+  suppressExperimentalDevicesNotice: z.boolean().optional(),
+  ignoredExplorerPaths: z.array(z.string()).optional()
 });
 
 export const browseDeviceSchema = z.object({
@@ -118,6 +120,51 @@ export const copyToDeviceSchema = z.object({
 export const deleteFromDeviceSchema = z.object({
   mountPath: z.string().min(1),
   relativePaths: z.array(z.string()).min(1)
+});
+
+export const explorerListSchema = z.object({
+  rootPath: z.string().min(1),
+  relativePath: z.string().default("")
+});
+
+export const explorerDeleteSchema = z.object({
+  rootPath: z.string().min(1),
+  relativePaths: z.array(z.string()).min(1)
+});
+
+export const explorerGetMetadataSchema = z.object({
+  rootPath: z.string().min(1),
+  relativePath: z.string().min(1)
+});
+
+export const explorerQuarantineSchema = z.object({
+  rootPath: z.string().min(1),
+  relativePaths: z.array(z.string()).min(1)
+});
+
+export const explorerIgnoreSchema = z.object({
+  rootPath: z.string().min(1),
+  relativePaths: z.array(z.string()),
+  mode: z.enum(["add", "remove", "replace"])
+});
+
+export const explorerBulkRenameItemSchema = z.object({
+  fromRelativePath: z.string().min(1),
+  toFilename: z.string().min(1)
+});
+
+export const explorerBulkRenameSchema = z.object({
+  rootPath: z.string().min(1),
+  items: z.array(explorerBulkRenameItemSchema).min(1),
+  dryRun: z.boolean().default(false)
+});
+
+export const explorerSmartFilterSchema = z.object({
+  rootPath: z.string().min(1),
+  relativePath: z.string().default(""),
+  preset: z.enum(["missing_tags", "low_bitrate", "short_duration", "duplicate_like_name", "non_audio"]),
+  lowBitrateKbps: z.number().int().min(32).max(512).optional(),
+  shortDurationSec: z.number().int().min(5).max(120).optional()
 });
 
 export const appErrorSchema = z.object({
