@@ -6,7 +6,7 @@ The project uses **Vitest** for all automated tests, running in a Node.js enviro
 
 ## Test structure
 
-```
+```text
 tests/
 ├── unit/                         — isolated tests per module
 │   ├── duplicateService.test.ts

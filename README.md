@@ -26,7 +26,7 @@ Desktop-first application for cleaning duplicate music files, comparing variants
 
 ## Architecture
 
-```
+```text
 Electron main process
 ├── core/        — config, logger, health checks, job coordinator, error helpers
 ├── db/          — SQLite client, migrations, repositories (Track, Duplicate, Quarantine, Dashboard, History)

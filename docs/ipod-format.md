@@ -6,7 +6,7 @@ This document describes the on-device data structures used by the Devices tab to
 
 When an iPod is connected in disk mode it mounts as a standard USB volume:
 
-```
+```text
 <mount>/
 ├── iPod_Control/
 │   ├── iTunes/
@@ -29,7 +29,7 @@ When an iPod is connected in disk mode it mounts as a standard USB volume:
 
 Located at `iPod_Control/Device/SysInfo`. Plain-text key-value pairs:
 
-```
+```text
 ModelNumStr: MA446LL
 pszSerialNumber: 4H5123456XYZ
 FirewireGuid: 0x0001234567890ABC
@@ -55,7 +55,7 @@ Every chunk starts with:
 
 ### Hierarchy
 
-```
+```text
 mhbd (database)
 └── mhsd (dataset, type=1 for tracks, type=2 for playlists)
     └── mhlt (track list, field at offset 8 = track count)
