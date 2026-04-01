@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactElement } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { isMediaFilePath, isVideoFilePath } from "../media/fileMedia";
 import type { ExplorerMetadata } from "../ipc/types";
 
@@ -37,6 +37,8 @@ export function ExplorerView({ onStatus, busy }: Props): ReactElement {
   const [previewingRename, setPreviewingRename] = useState(false);
   const [ignoredPaths, setIgnoredPaths] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -58,6 +60,21 @@ export function ExplorerView({ onStatus, busy }: Props): ReactElement {
       return a.name.localeCompare(b.name);
     });
   }, [visible, currentPath, selected]);
+
+  function keepListScrollStable(update: () => void) {
+    const list = listRef.current;
+    const previousTop = list?.scrollTop ?? 0;
+    update();
+    requestAnimationFrame(() => {
+      if (listRef.current) listRef.current.scrollTop = previousTop;
+    });
+  }
+
+  function scrollToActiveFile() {
+    if (!activeFile) return;
+    const rel = currentPath ? `${currentPath}/${activeFile}` : activeFile;
+    rowRefs.current[rel]?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
 
   async function pickRoot() {
     if (!api) return;
@@ -291,7 +308,7 @@ export function ExplorerView({ onStatus, busy }: Props): ReactElement {
             <p className="muted">Loading…</p>
           ) : (
             <div className="explorer-main">
-              <div className="explorer-list">
+              <div className="explorer-list" ref={listRef}>
               {currentPath && (
                 <button
                   type="button"
@@ -310,15 +327,21 @@ export function ExplorerView({ onStatus, busy }: Props): ReactElement {
                 const rel = currentPath ? `${currentPath}/${entry.name}` : entry.name;
                 const isSelected = selected.has(rel);
                 return (
-                  <div key={rel} className={`explorer-entry ${entry.type === "directory" ? "explorer-entry-dir" : "explorer-entry-file"} ${activeFile === entry.name ? "explorer-entry-active" : ""}`}>
+                  <div
+                    key={rel}
+                    ref={(el) => { rowRefs.current[rel] = el; }}
+                    className={`explorer-entry ${entry.type === "directory" ? "explorer-entry-dir" : "explorer-entry-file"} ${activeFile === entry.name ? "explorer-entry-active" : ""}`}
+                  >
                     <input
                       type="checkbox"
                       checked={isSelected}
                       onChange={(e) => {
-                        setSelected((prev) => {
-                          const next = new Set(prev);
-                          if (e.target.checked) next.add(rel); else next.delete(rel);
-                          return next;
+                        keepListScrollStable(() => {
+                          setSelected((prev) => {
+                            const next = new Set(prev);
+                            if (e.target.checked) next.add(rel); else next.delete(rel);
+                            return next;
+                          });
                         });
                       }}
                     />
@@ -367,7 +390,10 @@ export function ExplorerView({ onStatus, busy }: Props): ReactElement {
                       <span>Codec</span><strong>{metadata.media?.codec ?? "—"}</strong>
                       <span>Artwork</span><strong>{metadata.media?.hasArtwork ? "Yes" : "No"}</strong>
                     </div>
-                    <button type="button" onClick={() => void api.showItemInFolder(metadata.absolutePath)}>Show in folder</button>
+                    <div className="duplicate-actions">
+                      <button type="button" onClick={() => scrollToActiveFile()}>Go to selected in list</button>
+                      <button type="button" onClick={() => void api.showItemInFolder(metadata.absolutePath)}>Show in folder</button>
+                    </div>
                   </>
                 )}
               </aside>
