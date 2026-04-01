@@ -22,9 +22,6 @@ function formatBytes(bytes: number): string {
 
 export function ExplorerView({ onStatus, busy }: Props): ReactElement {
   const api = window.appApi;
-  if (!api) {
-    return <section className="explorer-view"><p className="muted">Explorer API unavailable.</p></section>;
-  }
   const [rootPath, setRootPath] = useState("");
   const [currentPath, setCurrentPath] = useState("");
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -243,6 +240,10 @@ export function ExplorerView({ onStatus, busy }: Props): ReactElement {
   }, [api]);
 
   const crumbs = currentPath ? currentPath.split("/").filter(Boolean) : [];
+
+  if (!api) {
+    return <section className="explorer-view"><p className="muted">Explorer API unavailable.</p></section>;
+  }
 
   return (
     <section className="explorer-view explorer-split">

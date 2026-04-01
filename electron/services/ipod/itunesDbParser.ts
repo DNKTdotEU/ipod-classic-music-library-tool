@@ -117,7 +117,6 @@ function parseMhit(buf: Buffer, offset: number): { track: Partial<IpodTrack>; to
     const chunkId = readChunkType(buf, pos);
     if (chunkId !== "mhod") break;
 
-    const mhodHeaderSize = safeU32(buf, pos + 4);
     const mhodTotalSize = safeU32(buf, pos + 8);
     if (mhodTotalSize === 0) break;
 

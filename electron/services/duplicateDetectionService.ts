@@ -31,10 +31,6 @@ type TrackRow = {
   canonical_duration_sec: number | null;
 };
 
-function normalizeForComparison(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9]/g, "").trim();
-}
-
 function normalizeTitleForComparison(s: string): string {
   // Strip common filename-style prefixes and remix/version suffixes for robust metadata matching.
   return s

@@ -166,12 +166,10 @@ export class ExplorerService {
         if (fromAbs === toAbs) continue;
         if (usedTargets.has(toAbs)) throw new Error("duplicate rename target in batch");
         usedTargets.add(toAbs);
-        // eslint-disable-next-line no-await-in-loop
         await fs.access(fromAbs);
         if (!dryRun) {
           let targetExists = false;
           try {
-            // eslint-disable-next-line no-await-in-loop
             await fs.access(toAbs);
             targetExists = true;
           } catch {
@@ -190,7 +188,6 @@ export class ExplorerService {
         const fromAbs = this.resolveWithinRoot(rootPath, r.from);
         const toAbs = this.resolveWithinRoot(rootPath, r.to);
         try {
-          // eslint-disable-next-line no-await-in-loop
           await fs.rename(fromAbs, toAbs);
         } catch (err) {
           failed.push(`${r.from} (${err instanceof Error ? err.message : String(err)})`);
@@ -226,7 +223,6 @@ export class ExplorerService {
       if (!isMediaFilePath(abs)) continue;
       let md: Awaited<ReturnType<typeof parseFile>> | null = null;
       try {
-        // eslint-disable-next-line no-await-in-loop
         md = await parseFile(abs);
       } catch {
         md = null;
