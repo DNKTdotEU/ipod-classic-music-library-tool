@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const scanModeSchema = z.enum(["strict", "balanced", "loose"]);
+export const scanReconcileModeSchema = z.enum(["full", "incremental"]);
 
 export const startScanRequestSchema = z.object({
   folders: z.array(z.string()).min(1),
@@ -62,6 +63,9 @@ export const logLevelSchema = z.enum(["debug", "info", "warn", "error"]);
 
 export const userSettingsSchema = z.object({
   defaultScanMode: scanModeSchema,
+  scanReconcileMode: scanReconcileModeSchema,
+  likelyMinConfidence: z.number().min(0.5).max(0.99),
+  likelyDurationThresholdSec: z.number().min(0).max(30),
   lastScanFolders: z.array(z.string()),
   logLevel: logLevelSchema,
   suppressKeepConfirm: z.boolean(),
@@ -71,6 +75,9 @@ export const userSettingsSchema = z.object({
 
 export const userSettingsPatchSchema = z.object({
   defaultScanMode: scanModeSchema.optional(),
+  scanReconcileMode: scanReconcileModeSchema.optional(),
+  likelyMinConfidence: z.number().min(0.5).max(0.99).optional(),
+  likelyDurationThresholdSec: z.number().min(0).max(30).optional(),
   lastScanFolders: z.array(z.string()).optional(),
   logLevel: logLevelSchema.optional(),
   suppressKeepConfirm: z.boolean().optional(),
@@ -81,6 +88,14 @@ export const userSettingsPatchSchema = z.object({
 export const browseDeviceSchema = z.object({
   mountPath: z.string().min(1),
   relativePath: z.string()
+});
+
+export const queryIpodLibraryTracksSchema = z.object({
+  mountPath: z.string().min(1),
+  search: z.string().optional(),
+  genre: z.string().optional(),
+  limit: z.number().int().min(1).max(1000).optional(),
+  offset: z.number().int().min(0).optional()
 });
 
 export const exportTracksSchema = z.object({

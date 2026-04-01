@@ -4,6 +4,9 @@ import type { ScanMode } from "../ipc/contracts.js";
 
 export type StoredUserSettings = {
   defaultScanMode: ScanMode;
+  scanReconcileMode: "full" | "incremental";
+  likelyMinConfidence: number;
+  likelyDurationThresholdSec: number;
   lastScanFolders: string[];
   logLevel: "debug" | "info" | "warn" | "error";
   suppressKeepConfirm: boolean;
@@ -13,6 +16,9 @@ export type StoredUserSettings = {
 
 const DEFAULTS: StoredUserSettings = {
   defaultScanMode: "balanced",
+  scanReconcileMode: "full",
+  likelyMinConfidence: 0.7,
+  likelyDurationThresholdSec: 2,
   lastScanFolders: [],
   logLevel: "info",
   suppressKeepConfirm: false,
@@ -27,6 +33,9 @@ function preferencesPath(userDataPath: string): string {
 function merge(base: StoredUserSettings, patch: Partial<StoredUserSettings>): StoredUserSettings {
   return {
     defaultScanMode: patch.defaultScanMode ?? base.defaultScanMode,
+    scanReconcileMode: patch.scanReconcileMode ?? base.scanReconcileMode,
+    likelyMinConfidence: patch.likelyMinConfidence ?? base.likelyMinConfidence,
+    likelyDurationThresholdSec: patch.likelyDurationThresholdSec ?? base.likelyDurationThresholdSec,
     lastScanFolders: patch.lastScanFolders ?? base.lastScanFolders,
     logLevel: patch.logLevel ?? base.logLevel,
     suppressKeepConfirm: patch.suppressKeepConfirm ?? base.suppressKeepConfirm,
@@ -49,6 +58,18 @@ export function loadPreferences(userDataPath: string): StoredUserSettings {
       o.defaultScanMode === "strict" || o.defaultScanMode === "balanced" || o.defaultScanMode === "loose"
         ? o.defaultScanMode
         : DEFAULTS.defaultScanMode;
+    const scanReconcileMode =
+      o.scanReconcileMode === "full" || o.scanReconcileMode === "incremental"
+        ? o.scanReconcileMode
+        : DEFAULTS.scanReconcileMode;
+    const likelyMinConfidence =
+      typeof o.likelyMinConfidence === "number" && o.likelyMinConfidence >= 0.5 && o.likelyMinConfidence <= 0.99
+        ? o.likelyMinConfidence
+        : DEFAULTS.likelyMinConfidence;
+    const likelyDurationThresholdSec =
+      typeof o.likelyDurationThresholdSec === "number" && o.likelyDurationThresholdSec >= 0 && o.likelyDurationThresholdSec <= 30
+        ? o.likelyDurationThresholdSec
+        : DEFAULTS.likelyDurationThresholdSec;
     const logLevel =
       o.logLevel === "debug" || o.logLevel === "info" || o.logLevel === "warn" || o.logLevel === "error"
         ? o.logLevel
@@ -56,7 +77,17 @@ export function loadPreferences(userDataPath: string): StoredUserSettings {
     const suppressKeepConfirm = typeof o.suppressKeepConfirm === "boolean" ? o.suppressKeepConfirm : DEFAULTS.suppressKeepConfirm;
     const suppressDeleteConfirm = typeof o.suppressDeleteConfirm === "boolean" ? o.suppressDeleteConfirm : DEFAULTS.suppressDeleteConfirm;
     const suppressExperimentalDevicesNotice = typeof o.suppressExperimentalDevicesNotice === "boolean" ? o.suppressExperimentalDevicesNotice : DEFAULTS.suppressExperimentalDevicesNotice;
-    return merge(DEFAULTS, { defaultScanMode, lastScanFolders, logLevel, suppressKeepConfirm, suppressDeleteConfirm, suppressExperimentalDevicesNotice });
+    return merge(DEFAULTS, {
+      defaultScanMode,
+      scanReconcileMode,
+      likelyMinConfidence,
+      likelyDurationThresholdSec,
+      lastScanFolders,
+      logLevel,
+      suppressKeepConfirm,
+      suppressDeleteConfirm,
+      suppressExperimentalDevicesNotice
+    });
   } catch {
     return { ...DEFAULTS };
   }

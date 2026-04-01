@@ -14,6 +14,9 @@ describe("preferencesStore", () => {
   it("returns defaults when no file exists", () => {
     const prefs = loadPreferences(tmpDir);
     expect(prefs.defaultScanMode).toBe("balanced");
+    expect(prefs.scanReconcileMode).toBe("full");
+    expect(prefs.likelyMinConfidence).toBe(0.7);
+    expect(prefs.likelyDurationThresholdSec).toBe(2);
     expect(prefs.lastScanFolders).toEqual([]);
     expect(prefs.logLevel).toBe("info");
     expect(prefs.suppressKeepConfirm).toBe(false);
@@ -27,10 +30,19 @@ describe("preferencesStore", () => {
   });
 
   it("merges partial updates", () => {
-    savePreferences(tmpDir, { defaultScanMode: "strict", lastScanFolders: ["/music"] });
+    savePreferences(tmpDir, {
+      defaultScanMode: "strict",
+      scanReconcileMode: "incremental",
+      likelyMinConfidence: 0.8,
+      likelyDurationThresholdSec: 5,
+      lastScanFolders: ["/music"]
+    });
     savePreferences(tmpDir, { logLevel: "debug" });
     const prefs = loadPreferences(tmpDir);
     expect(prefs.defaultScanMode).toBe("strict");
+    expect(prefs.scanReconcileMode).toBe("incremental");
+    expect(prefs.likelyMinConfidence).toBe(0.8);
+    expect(prefs.likelyDurationThresholdSec).toBe(5);
     expect(prefs.lastScanFolders).toEqual(["/music"]);
     expect(prefs.logLevel).toBe("debug");
   });

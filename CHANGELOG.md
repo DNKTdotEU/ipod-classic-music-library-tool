@@ -30,6 +30,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **Duplicate detection reliability hardening**: duplicate grouping now preserves `user_resolved` status when the same candidate set reappears after refresh/rescan.
+- **Configurable duplicate detection**: likely-duplicate minimum confidence and duration threshold are now configurable through user settings.
+- **Configurable scan reconciliation**: scans now support `full` (prune stale records) and `incremental` (do not globally prune) reconciliation behavior.
 - **`applyDecision` is now async**: Returns `{ ok, deleted, failed }` instead of a boolean, enabling the renderer to report per-file outcomes.
 - **`dialog:confirm` extended**: Supports optional `checkboxLabel` in request and returns `checkboxChecked` in response.
 - **DuplicatesView intro text**: Updated to explain the new "Keep This" destructive behavior.
@@ -45,6 +48,7 @@ All notable changes to this project will be documented in this file.
 - **duplicateService**: `applyDecision` catch now captures and reports the error reason in failed entries.
 - **SettingsView**: `getAppPaths` failure now displays a status message.
 - **discoverFiles**: Exported for direct unit testing.
+- **Duplicate decision/delete persistence**: duplicate file removals now also clean file-copy records and orphan tracks.
 - Runtime architecture hardened with repository-backed service wiring and structured error/logging primitives.
 - Startup safety improved with database pragmas and health checks.
 
@@ -59,6 +63,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Reset scan data is blocked while scan/duplicate-refresh jobs are running to avoid concurrent data mutations.
+- Duplicate-related IPC handlers now consistently map thrown errors to envelope responses.
 - Duplicate finalize progress event was emitted twice at `processed: 4` — corrected to use `steps.length + 1`.
 - `QuarantineService.move()` now actually moves files instead of only recording metadata.
 - `QuarantineService.restore()` now actually restores files to original location.

@@ -84,4 +84,25 @@ describe("DuplicateDetectionService", () => {
     expect(result.exactGroups).toBe(1);
     expect(result.likelyGroups).toBe(0);
   });
+
+  it("supports configurable likely threshold", () => {
+    insertTrackAndCopy(db, "t1", "c1", { title: "Same Song", artist: "Artist", path: "/a.mp3", hash: "h1", duration: 100 });
+    insertTrackAndCopy(db, "t2", "c2", { title: "Same Song", artist: "Artist", path: "/b.mp3", hash: "h2", duration: 130 });
+
+    const strict = service.detect({ likelyMinConfidence: 0.9, durationThresholdSec: 2 });
+    expect(strict.likelyGroups).toBe(0);
+    const relaxed = service.detect({ likelyMinConfidence: 0.7, durationThresholdSec: 40 });
+    expect(relaxed.likelyGroups).toBe(1);
+  });
+
+  it("preserves user_resolved status when candidate set matches", () => {
+    insertTrackAndCopy(db, "t1", "c1", { title: "Song", artist: "Artist", path: "/a.mp3", hash: "same", duration: 200 });
+    insertTrackAndCopy(db, "t2", "c2", { title: "Song", artist: "Artist", path: "/b.mp3", hash: "same", duration: 200 });
+    service.detect();
+    db.prepare("UPDATE duplicate_groups SET status = 'user_resolved'").run();
+
+    service.detect({ preserveResolved: true });
+    const status = db.prepare("SELECT status FROM duplicate_groups LIMIT 1").get() as { status: string };
+    expect(status.status).toBe("user_resolved");
+  });
 });

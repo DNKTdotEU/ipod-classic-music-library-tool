@@ -24,6 +24,7 @@ export type ProgressEvent = {
 
 /** Matches `scanModeSchema` in the main process. */
 export type ScanMode = "strict" | "balanced" | "loose";
+export type ScanReconcileMode = "full" | "incremental";
 
 /** Matches `logLevelSchema` in the main process. */
 export type LogLevel = "debug" | "info" | "warn" | "error";
@@ -31,6 +32,9 @@ export type LogLevel = "debug" | "info" | "warn" | "error";
 /** Matches `userSettingsSchema` in the main process. */
 export type UserSettings = {
   defaultScanMode: ScanMode;
+  scanReconcileMode: ScanReconcileMode;
+  likelyMinConfidence: number;
+  likelyDurationThresholdSec: number;
   lastScanFolders: string[];
   logLevel: LogLevel;
   suppressKeepConfirm: boolean;
@@ -99,6 +103,23 @@ export type IpodTrack = {
 export type IpodLibrary = {
   version: number;
   tracks: IpodTrack[];
+};
+
+export type IpodLibraryTrackQuery = {
+  mountPath: string;
+  search?: string;
+  genre?: string;
+  limit?: number;
+  offset?: number;
+};
+
+export type IpodLibraryTrackQueryResult = {
+  tracks: IpodTrack[];
+  total: number;
+  offset: number;
+  limit: number;
+  hasMore: boolean;
+  availableGenres: string[];
 };
 
 export type FsEntry = {

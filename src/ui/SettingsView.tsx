@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactElement } from "react";
-import type { AppPathsInfo, LogLevel, ScanMode, UserSettings } from "../ipc/types";
+import type { AppPathsInfo, LogLevel, ScanMode, ScanReconcileMode, UserSettings } from "../ipc/types";
 
 type Envelope<T> = { ok: true; data: T } | { ok: false; error: { message: string } };
 
@@ -13,6 +13,9 @@ export function SettingsView({ onApplied, onStatus }: Props): ReactElement {
   const api = window.appApi;
   const [paths, setPaths] = useState<AppPathsInfo | null>(null);
   const [defaultScanMode, setDefaultScanMode] = useState<ScanMode>("balanced");
+  const [scanReconcileMode, setScanReconcileMode] = useState<ScanReconcileMode>("full");
+  const [likelyMinConfidence, setLikelyMinConfidence] = useState(0.7);
+  const [likelyDurationThresholdSec, setLikelyDurationThresholdSec] = useState(2);
   const [logLevel, setLogLevel] = useState<LogLevel>("info");
   const [foldersText, setFoldersText] = useState("");
   const [suppressKeepConfirm, setSuppressKeepConfirm] = useState(false);
@@ -31,6 +34,9 @@ export function SettingsView({ onApplied, onStatus }: Props): ReactElement {
       ]);
       if (s.ok) {
         setDefaultScanMode(s.data.defaultScanMode);
+        setScanReconcileMode(s.data.scanReconcileMode);
+        setLikelyMinConfidence(s.data.likelyMinConfidence);
+        setLikelyDurationThresholdSec(s.data.likelyDurationThresholdSec);
         setLogLevel(s.data.logLevel);
         setFoldersText(s.data.lastScanFolders.join("\n"));
         setSuppressKeepConfirm(s.data.suppressKeepConfirm);
@@ -65,6 +71,9 @@ export function SettingsView({ onApplied, onStatus }: Props): ReactElement {
     try {
       const result = (await api.setSettings({
         defaultScanMode,
+        scanReconcileMode,
+        likelyMinConfidence,
+        likelyDurationThresholdSec,
         logLevel,
         lastScanFolders: lines
       })) as Envelope<UserSettings>;
@@ -100,6 +109,43 @@ export function SettingsView({ onApplied, onStatus }: Props): ReactElement {
             <option value="balanced">Balanced — recommended</option>
             <option value="loose">Loose — faster, more candidate matches</option>
           </select>
+        </label>
+
+        <label className="settings-field">
+          Scan reconcile mode
+          <select
+            value={scanReconcileMode}
+            onChange={(e) => setScanReconcileMode(e.target.value as ScanReconcileMode)}
+            className="settings-select"
+          >
+            <option value="full">Full reconcile — remove stale records for files missing on disk</option>
+            <option value="incremental">Incremental — keep existing records outside scanned folders</option>
+          </select>
+        </label>
+
+        <label className="settings-field">
+          Likely duplicate minimum confidence ({likelyMinConfidence.toFixed(2)})
+          <input
+            type="range"
+            min={0.5}
+            max={0.99}
+            step={0.01}
+            value={likelyMinConfidence}
+            onChange={(e) => setLikelyMinConfidence(Number(e.target.value))}
+          />
+        </label>
+
+        <label className="settings-field">
+          Likely duplicate duration threshold (seconds)
+          <input
+            type="number"
+            min={0}
+            max={30}
+            step={1}
+            value={likelyDurationThresholdSec}
+            onChange={(e) => setLikelyDurationThresholdSec(Number(e.target.value))}
+            className="settings-select"
+          />
         </label>
 
         <label className="settings-field">

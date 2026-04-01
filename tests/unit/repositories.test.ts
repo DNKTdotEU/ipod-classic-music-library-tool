@@ -53,7 +53,7 @@ describe("DuplicateRepository", () => {
     expect(repo.list()[0]!.status).toBe("user_resolved");
   });
 
-  it("removeCandidate removes a candidate and returns true", () => {
+  it("removeCandidate deletes group when remaining candidates are less than two", () => {
     repo.replaceDemoGroups([{
       id: "g1", type: "exact", confidence: 1.0, status: "unreviewed", title: "S", artist: "A",
       candidates: [
@@ -62,7 +62,7 @@ describe("DuplicateRepository", () => {
       ]
     }]);
     expect(repo.removeCandidate("g1", "c1")).toBe(true);
-    expect(repo.list()[0]!.candidates.length).toBe(1);
+    expect(repo.list().length).toBe(0);
   });
 
   it("removeCandidate deletes group when last candidate is removed", () => {
@@ -198,5 +198,58 @@ describe("TrackRepository", () => {
     repo.upsertBatch([{ ...base, id: "t2", title: "Updated Song", fileCopy: { ...base.fileCopy, id: "fc2", bitrate: 320000 } }]);
     expect(repo.totalTracks()).toBe(1);
     expect(repo.totalFileCopies()).toBe(1);
+  });
+
+  it("pruneStaleFileCopies removes stale copies and orphan tracks", () => {
+    const db = createTestDb();
+    const repo = new TrackRepository(db);
+    const now = new Date().toISOString();
+    db.prepare("INSERT INTO tracks (id, title, artists, created_at, updated_at) VALUES (?, ?, ?, ?, ?)").run("t1", "A", "AA", now, now);
+    db.prepare("INSERT INTO tracks (id, title, artists, created_at, updated_at) VALUES (?, ?, ?, ?, ?)").run("t2", "B", "BB", now, now);
+    db.prepare("INSERT INTO file_copies (id, track_id, path, filename, format, duration_sec, size_bytes, modified_at, metadata_completeness, fingerprint_hash, has_artwork) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .run("c1", "t1", "/music/a.mp3", "a.mp3", "mp3", 10, 10, now, 1, "h1", 0);
+    db.prepare("INSERT INTO file_copies (id, track_id, path, filename, format, duration_sec, size_bytes, modified_at, metadata_completeness, fingerprint_hash, has_artwork) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .run("c2", "t2", "/music/b.mp3", "b.mp3", "mp3", 10, 10, now, 1, "h2", 0);
+
+    const pruned = repo.pruneStaleFileCopies(new Set(["/music/a.mp3"]));
+    expect(pruned).toBe(1);
+    expect(repo.totalFileCopies()).toBe(1);
+    expect(repo.totalTracks()).toBe(1);
+  });
+
+  it("removeFileCopyByPath deletes copy and orphans", () => {
+    const db = createTestDb();
+    const repo = new TrackRepository(db);
+    const now = new Date().toISOString();
+    db.prepare("INSERT INTO tracks (id, title, artists, created_at, updated_at) VALUES (?, ?, ?, ?, ?)").run("t1", "A", "AA", now, now);
+    db.prepare("INSERT INTO file_copies (id, track_id, path, filename, format, duration_sec, size_bytes, modified_at, metadata_completeness, fingerprint_hash, has_artwork) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .run("c1", "t1", "/music/a.mp3", "a.mp3", "mp3", 10, 10, now, 1, "h1", 0);
+
+    expect(repo.removeFileCopyByPath("/music/a.mp3")).toBe(true);
+    expect(repo.totalFileCopies()).toBe(0);
+    expect(repo.totalTracks()).toBe(0);
+  });
+
+  it("clearAll removes tracks, copies and duplicate groups", () => {
+    const db = createTestDb();
+    const repo = new TrackRepository(db);
+    const dupRepo = new DuplicateRepository(db);
+    dupRepo.replaceDemoGroups([{
+      id: "g1", type: "exact", confidence: 1, status: "unreviewed", title: "S", artist: "A",
+      candidates: [
+        { id: "c1", path: "/a.mp3", format: "mp3", bitrate: 128000, durationSec: 200, sizeBytes: 10, metadataCompleteness: 1, hasArtwork: false },
+        { id: "c2", path: "/b.mp3", format: "mp3", bitrate: 128000, durationSec: 200, sizeBytes: 10, metadataCompleteness: 1, hasArtwork: false }
+      ]
+    }]);
+    repo.upsertBatch([{
+      id: "t1", title: "Song", artists: "Artist", album: null, albumArtist: null, trackNumber: null, discNumber: null, canonicalDurationSec: 1,
+      year: null, genre: null, compilation: false, artworkRef: null,
+      fileCopy: { id: "c1", path: "/a.mp3", filename: "a.mp3", format: "mp3", codec: null, bitrate: null, sampleRate: null, channels: null, durationSec: 1, sizeBytes: 1, modifiedAt: new Date().toISOString(), metadataCompleteness: 1, fingerprintHash: "h", artworkHash: null, hasArtwork: false }
+    }]);
+
+    repo.clearAll();
+    expect(repo.totalTracks()).toBe(0);
+    expect(repo.totalFileCopies()).toBe(0);
+    expect(dupRepo.list()).toEqual([]);
   });
 });

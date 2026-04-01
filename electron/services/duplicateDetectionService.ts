@@ -3,6 +3,7 @@ import type Database from "better-sqlite3";
 import type { ProgressPayload } from "../ipc/contracts.js";
 
 const DEFAULT_DURATION_THRESHOLD_SEC = 2;
+const DEFAULT_MIN_CONFIDENCE = 0.7;
 
 type FileCopyRow = {
   id: string;
@@ -34,13 +35,95 @@ function normalizeForComparison(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]/g, "").trim();
 }
 
+function normalizeTitleForComparison(s: string): string {
+  // Strip common filename-style prefixes and remix/version suffixes for robust metadata matching.
+  return s
+    .toLowerCase()
+    .replace(/^\s*\d+\s*[-_.)\]]\s*/g, "")
+    .replace(/\((remaster|remastered|live|radio edit|edit|mix|version)[^)]+\)/g, "")
+    .replace(/\[(remaster|remastered|live|radio edit|edit|mix|version)[^\]]+\]/g, "")
+    .replace(/\s+/g, " ")
+    .replace(/[^a-z0-9 ]/g, "")
+    .trim();
+}
+
+function normalizeArtistForComparison(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/\b(feat|ft|featuring)\b.*$/g, "")
+    .replace(/[^a-z0-9 ]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeAlbumForComparison(s: string | null): string {
+  if (!s) return "";
+  return s
+    .toLowerCase()
+    .replace(/\((deluxe|expanded|remaster|remastered)[^)]+\)/g, "")
+    .replace(/\[(deluxe|expanded|remaster|remastered)[^\]]+\]/g, "")
+    .replace(/[^a-z0-9 ]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function durationBucketSeconds(duration: number | null): string {
+  if (duration == null || duration <= 0) return "unknown";
+  return String(Math.round(duration / 5) * 5);
+}
+
+function titleTokenSignature(titleNorm: string): string {
+  const STOPWORDS = new Set(["the", "a", "an", "and", "or", "of", "to", "in", "on", "for", "with"]);
+  const tokens = titleNorm
+    .split(/\s+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length > 1 && !STOPWORDS.has(t));
+  if (tokens.length === 0) return titleNorm;
+  return Array.from(new Set(tokens)).sort().join(" ");
+}
+
+function buildLikelyKeys(
+  track: TrackRow,
+  allowTitleOnlyLikely: boolean,
+  requireArtistForLikely: boolean
+): Array<{ key: string; keyType: "title_artist" | "title_only" | "title_album_duration" }> {
+  const titleNorm = normalizeTitleForComparison(track.title);
+  if (titleNorm.length === 0) return [];
+  const titleSig = titleTokenSignature(titleNorm);
+  const artistNorm = normalizeArtistForComparison(track.artists);
+  const albumNorm = normalizeAlbumForComparison(track.album);
+  const durBucket = durationBucketSeconds(track.canonical_duration_sec);
+  const hasUsableArtist = artistNorm.length > 0 && artistNorm !== "unknown artist" && artistNorm !== "unknownartist";
+  if (requireArtistForLikely && !hasUsableArtist) return [];
+
+  const keys = new Map<string, "title_artist" | "title_only" | "title_album_duration">();
+  if (hasUsableArtist) {
+    keys.set(`ta:${titleNorm}::${artistNorm}`, "title_artist");
+    keys.set(`tas:${titleSig}::${artistNorm}`, "title_artist");
+  }
+  if (albumNorm.length > 0) {
+    keys.set(`tad:${titleSig}::${albumNorm}::${durBucket}`, "title_album_duration");
+  } else {
+    keys.set(`td:${titleSig}::${durBucket}`, "title_album_duration");
+  }
+  if (allowTitleOnlyLikely) {
+    keys.set(`t:${titleSig}`, "title_only");
+  }
+  return Array.from(keys, ([key, keyType]) => ({ key, keyType }));
+}
+
+function signatureForCopyIds(ids: string[]): string {
+  return ids.slice().sort().join("|");
+}
+
 function computeLikelyConfidence(
   copies: FileCopyRow[],
   tracks: Map<string, TrackRow>,
-  durationThreshold: number
+  durationThreshold: number,
+  keyType: "title_artist" | "title_only" | "title_album_duration"
 ): number {
   if (copies.length < 2) return 0;
-  let score = 0.7;
+  let score = keyType === "title_artist" ? 0.78 : keyType === "title_album_duration" ? 0.72 : 0.64;
 
   const durations = copies.map((c) => c.duration_sec).filter((d) => d > 0);
   if (durations.length >= 2) {
@@ -67,7 +150,7 @@ function computeLikelyConfidence(
     }
   }
 
-  return Math.min(0.99, Math.round(score * 100) / 100);
+  return Math.min(0.99, Math.max(0, Math.round(score * 100) / 100));
 }
 
 export class DuplicateDetectionService {
@@ -78,9 +161,40 @@ export class DuplicateDetectionService {
    * Clears existing groups and repopulates from file_copies + tracks tables.
    */
   detect(
-    onProgress?: (event: ProgressPayload) => void,
-    isCancelled?: () => boolean
+    optionsOrOnProgress?:
+      | {
+          durationThresholdSec?: number;
+          likelyMinConfidence?: number;
+          preserveResolved?: boolean;
+          allowTitleOnlyLikely?: boolean;
+          requireArtistForLikely?: boolean;
+        }
+      | ((event: ProgressPayload) => void),
+    onProgressOrCancelled?: ((event: ProgressPayload) => void) | (() => boolean),
+    isCancelledArg?: () => boolean
   ): { exactGroups: number; likelyGroups: number } {
+    const options =
+      typeof optionsOrOnProgress === "function" || !optionsOrOnProgress
+        ? undefined
+        : optionsOrOnProgress;
+    const onProgress =
+      typeof optionsOrOnProgress === "function"
+        ? optionsOrOnProgress
+        : (typeof onProgressOrCancelled === "function" && onProgressOrCancelled.length > 0
+            ? (onProgressOrCancelled as (event: ProgressPayload) => void)
+            : undefined);
+    const isCancelled =
+      typeof optionsOrOnProgress === "function"
+        ? (typeof onProgressOrCancelled === "function" && onProgressOrCancelled.length === 0
+            ? (onProgressOrCancelled as () => boolean)
+            : isCancelledArg)
+        : isCancelledArg;
+    const durationThreshold = options?.durationThresholdSec ?? DEFAULT_DURATION_THRESHOLD_SEC;
+    const likelyMinConfidence = options?.likelyMinConfidence ?? DEFAULT_MIN_CONFIDENCE;
+    const preserveResolved = options?.preserveResolved ?? true;
+    const allowTitleOnlyLikely = options?.allowTitleOnlyLikely ?? true;
+    const requireArtistForLikely = options?.requireArtistForLikely ?? false;
+
     const allCopies = this.db.prepare("SELECT * FROM file_copies").all() as FileCopyRow[];
     const allTracks = this.db.prepare("SELECT id, title, artists, album, canonical_duration_sec FROM tracks").all() as TrackRow[];
     const trackMap = new Map(allTracks.map((t) => [t.id, t]));
@@ -132,17 +246,19 @@ export class DuplicateDetectionService {
       message: "Detecting likely duplicates…"
     });
 
-    const byNormalizedKey = new Map<string, FileCopyRow[]>();
+    const byNormalizedKey = new Map<string, { copies: FileCopyRow[]; keyType: "title_artist" | "title_only" | "title_album_duration" }>();
     for (const copy of allCopies) {
       if (inExactGroup.has(copy.id)) continue;
       const track = trackMap.get(copy.track_id);
       if (!track) continue;
-      const key = `${normalizeForComparison(track.title)}::${normalizeForComparison(track.artists)}`;
-      const existing = byNormalizedKey.get(key);
-      if (existing) {
-        existing.push(copy);
-      } else {
-        byNormalizedKey.set(key, [copy]);
+      const keys = buildLikelyKeys(track, allowTitleOnlyLikely, requireArtistForLikely);
+      for (const { key, keyType } of keys) {
+        const existing = byNormalizedKey.get(key);
+        if (existing) {
+          existing.copies.push(copy);
+        } else {
+          byNormalizedKey.set(key, { copies: [copy], keyType });
+        }
       }
     }
 
@@ -154,10 +270,11 @@ export class DuplicateDetectionService {
       track: TrackRow | undefined;
     }> = [];
 
-    for (const [, copies] of byNormalizedKey) {
+    for (const [, entry] of byNormalizedKey) {
+      const { copies, keyType } = entry;
       if (copies.length < 2) continue;
-      const confidence = computeLikelyConfidence(copies, trackMap, DEFAULT_DURATION_THRESHOLD_SEC);
-      if (confidence < 0.7) continue;
+      const confidence = computeLikelyConfidence(copies, trackMap, durationThreshold, keyType);
+      if (confidence < likelyMinConfidence) continue;
       const track = trackMap.get(copies[0]!.track_id);
       likelyGroupEntries.push({
         id: randomUUID(),
@@ -178,6 +295,26 @@ export class DuplicateDetectionService {
     });
 
     const tx = this.db.transaction(() => {
+      const preservedResolved = new Set<string>();
+      if (preserveResolved) {
+        const previous = this.db.prepare("SELECT duplicate_type, status, summary FROM duplicate_groups WHERE status = 'user_resolved'").all() as Array<{
+          duplicate_type: "exact" | "likely";
+          status: string;
+          summary: string | null;
+        }>;
+        for (const row of previous) {
+          if (!row.summary) continue;
+          try {
+            const parsed = JSON.parse(row.summary) as { candidates?: Array<{ id: string }> };
+            const ids = (parsed.candidates ?? []).map((c) => c.id);
+            if (ids.length >= 2) {
+              preservedResolved.add(`${row.duplicate_type}:${signatureForCopyIds(ids)}`);
+            }
+          } catch {
+            /* ignore malformed summary */
+          }
+        }
+      }
       this.db.prepare("DELETE FROM duplicate_group_items").run();
       this.db.prepare("DELETE FROM duplicate_groups").run();
 
@@ -210,7 +347,10 @@ export class DuplicateDetectionService {
           }))
         });
 
-        insertGroup.run(group.id, group.type, group.confidence, "unreviewed", summary, now, now);
+        const status = preservedResolved.has(`${group.type}:${signatureForCopyIds(group.copies.map((c) => c.id))}`)
+          ? "user_resolved"
+          : "unreviewed";
+        insertGroup.run(group.id, group.type, group.confidence, status, summary, now, now);
         for (const copy of group.copies) {
           insertItem.run(group.id, copy.id);
         }

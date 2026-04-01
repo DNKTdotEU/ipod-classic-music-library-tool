@@ -59,6 +59,7 @@ const METRIC_LABELS: Record<string, { label: string; tab?: (typeof nav)[number] 
 };
 
 const STATUS_AUTO_CLEAR_MS = 8000;
+const normalizeFolderKey = (p: string): string => p.replace(/[\\/]+$/, "").toLowerCase();
 
 export function App(): ReactElement {
   const api = window.appApi;
@@ -101,9 +102,9 @@ export function App(): ReactElement {
       const dashboard = (await api.getDashboard()) as Envelope<DashboardMetrics>;
       const duplicateList = (await api.getDuplicates()) as Envelope<DuplicateGroup[]>;
       const quarantineList = (await api.getQuarantine()) as Envelope<QuarantineItem[]>;
-      if (dashboard.ok) setMetrics(dashboard.data);
-      if (duplicateList.ok) setGroups(duplicateList.data);
-      if (quarantineList.ok) setQuarantine(quarantineList.data);
+      if (dashboard.ok) setMetrics(dashboard.data); else showStatus(`Dashboard: ${dashboard.error.message}`, "error");
+      if (duplicateList.ok) setGroups(duplicateList.data); else showStatus(`Duplicates: ${duplicateList.error.message}`, "error");
+      if (quarantineList.ok) setQuarantine(quarantineList.data); else showStatus(`Quarantine: ${quarantineList.error.message}`, "error");
     } catch (err) {
       const text = err instanceof Error ? err.message : String(err);
       showStatus(`Failed to load data: ${text}`, "error");
@@ -122,8 +123,8 @@ export function App(): ReactElement {
     if (!api) return;
     const unsubscribe = api.onProgress((event) => {
       setProgress(event);
-      setMessage(event.message);
-      setMessageType("info");
+      setMessage((prev) => (messageType === "error" ? prev : event.message));
+      setMessageType((prev) => (prev === "error" ? prev : "info"));
       if (isTerminalProgress(event)) {
         setActiveJobIds((prev) => {
           if (prev[event.jobType] !== event.jobId) return prev;
@@ -136,7 +137,7 @@ export function App(): ReactElement {
     });
     void refresh();
     return unsubscribe;
-  }, [api, refresh]);
+  }, [api, messageType, refresh]);
 
   const scanRunning = activeJobIds.scan !== undefined;
   const bulkDuplicateRunning = activeJobIds.bulk_duplicate !== undefined;
@@ -173,8 +174,17 @@ export function App(): ReactElement {
         return;
       }
       setScanFolders((prev) => {
-        const merged = [...new Set([...prev, ...result.data.paths])];
-        const addedNew = result.data.paths.filter((p) => !prev.includes(p)).length;
+        const seen = new Set(prev.map((p) => normalizeFolderKey(p)));
+        const additions: string[] = [];
+        for (const candidate of result.data.paths) {
+          const key = normalizeFolderKey(candidate);
+          if (!seen.has(key)) {
+            seen.add(key);
+            additions.push(candidate);
+          }
+        }
+        const merged = [...prev, ...additions];
+        const addedNew = additions.length;
         showStatus(`Added ${addedNew} folder(s). (${merged.length} in list)`, "success");
         return merged;
       });
@@ -321,11 +331,14 @@ export function App(): ReactElement {
         applied: boolean;
         deleted: string[];
         failed: string[];
+        resolved: boolean;
       }>;
       if (result.ok) {
         const msg = `Kept file, deleted ${result.data.deleted.length} file(s).`;
         const failMsg = result.data.failed.length > 0 ? ` ${result.data.failed.length} file(s) could not be deleted.` : "";
+        const unresolvedMsg = result.data.resolved ? "" : " Group remains unresolved due to remaining files.";
         showStatus(msg + failMsg, result.data.failed.length > 0 ? "error" : "success");
+        if (!result.data.resolved) showStatus(msg + failMsg + unresolvedMsg, "error");
       } else {
         showStatus(result.error.message, "error");
       }
@@ -591,7 +604,7 @@ export function App(): ReactElement {
                 type="button"
                 className="btn-danger"
                 onClick={() => void resetScanData()}
-                disabled={scanRunning}
+                disabled={scanRunning || bulkDuplicateRunning}
                 title="Remove all indexed tracks, file records, and duplicate groups"
               >
                 Clear scan data
@@ -643,7 +656,7 @@ export function App(): ReactElement {
 
         {active === "History" && <HistoryView onStatus={showStatus} />}
         {active === "Devices" && <DevicesView onStatus={showStatus} />}
-        {active === "Settings" && <SettingsView onApplied={applySettingsFromServer} onStatus={setMessage} />}
+        {active === "Settings" && <SettingsView onApplied={applySettingsFromServer} onStatus={(msg) => showStatus(msg, "info")} />}
       </main>
     </div>
   );

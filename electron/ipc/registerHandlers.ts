@@ -4,6 +4,7 @@ import {
   IPC_CHANNELS,
   applyDecisionSchema,
   browseDeviceSchema,
+  queryIpodLibraryTracksSchema,
   copyToDeviceSchema,
   deleteFromDeviceSchema,
   deleteDuplicateCandidateSchema,
@@ -41,9 +42,9 @@ export function registerHandlers(db: Database.Database, userDataPath: string): v
   const duplicateRepository = new DuplicateRepository(db);
   const quarantineRepository = new QuarantineRepository(db);
   const dashboardService = new DashboardService(new DashboardRepository(db));
-  const duplicateService = new DuplicateService(duplicateRepository, historyRepository);
-  const quarantineService = new QuarantineService(quarantineRepository, historyRepository, config.quarantineDir);
   const trackRepository = new TrackRepository(db);
+  const duplicateService = new DuplicateService(duplicateRepository, historyRepository, trackRepository);
+  const quarantineService = new QuarantineService(quarantineRepository, historyRepository, config.quarantineDir);
   const duplicateDetectionService = new DuplicateDetectionService(db);
   const scanService = new ScanService(trackRepository, historyRepository, duplicateDetectionService);
 
@@ -79,7 +80,18 @@ export function registerHandlers(db: Database.Database, userDataPath: string): v
       const jobId = jobs.run(
         "scan",
         async (runtimeJobId, emit, isCancelled) => {
-          await scanService.runScan(runtimeJobId, parsed.data.folders, parsed.data.mode, emit, isCancelled);
+          await scanService.runScan(
+            runtimeJobId,
+            parsed.data.folders,
+            parsed.data.mode,
+            {
+              reconcileMode: userSettings.scanReconcileMode,
+              likelyMinConfidence: userSettings.likelyMinConfidence,
+              likelyDurationThresholdSec: userSettings.likelyDurationThresholdSec
+            },
+            emit,
+            isCancelled
+          );
         },
         (progress) => win.webContents.send(IPC_CHANNELS.ON_PROGRESS, progress)
       );
@@ -97,6 +109,9 @@ export function registerHandlers(db: Database.Database, userDataPath: string): v
 
   ipcMain.handle(IPC_CHANNELS.RESET_SCAN_DATA, () => {
     try {
+      if (jobs.hasActiveJobType("scan") || jobs.hasActiveJobType("bulk_duplicate")) {
+        return fail("Cannot clear scan data while scan or duplicate refresh job is running", "CONFLICT");
+      }
       trackRepository.clearAll();
       historyRepository.record("scan_reset", "All scan data cleared by user");
       logger.info("Scan data reset by user");
@@ -116,7 +131,17 @@ export function registerHandlers(db: Database.Database, userDataPath: string): v
       const jobId = jobs.run(
         "bulk_duplicate",
         async (runtimeJobId, emit, isCancelled) => {
-          await runBulkDuplicateRefresh(runtimeJobId, duplicateDetectionService, historyRepository, emit, isCancelled);
+          await runBulkDuplicateRefresh(
+            runtimeJobId,
+            duplicateDetectionService,
+            historyRepository,
+            {
+              likelyMinConfidence: userSettings.likelyMinConfidence,
+              likelyDurationThresholdSec: userSettings.likelyDurationThresholdSec
+            },
+            emit,
+            isCancelled
+          );
         },
         (progress) => win.webContents.send(IPC_CHANNELS.ON_PROGRESS, progress)
       );
@@ -151,8 +176,8 @@ export function registerHandlers(db: Database.Database, userDataPath: string): v
       const parsed = applyDecisionSchema.safeParse(raw);
       if (!parsed.success) return fail(parsed.error.message);
       const result = await duplicateService.applyDecision(parsed.data.groupId, parsed.data.keepFileId);
-      if (!result.ok) return fail(result.reason, "CONFLICT");
-      return ok({ applied: true, deleted: result.deleted, failed: result.failed });
+      if (!result.ok) return fail(result.reason, "BAD_REQUEST");
+      return ok({ applied: true, deleted: result.deleted, failed: result.failed, resolved: result.resolved });
     } catch (error) {
       logger.error("Failed to apply decision", { error: String(error) });
       return mapError(error);
@@ -160,19 +185,29 @@ export function registerHandlers(db: Database.Database, userDataPath: string): v
   });
 
   ipcMain.handle(IPC_CHANNELS.DELETE_DUPLICATE_CANDIDATE, async (_event, raw: unknown) => {
-    const parsed = deleteDuplicateCandidateSchema.safeParse(raw);
-    if (!parsed.success) return fail(parsed.error.message);
-    const result = await duplicateService.deleteCandidateFile(parsed.data.groupId, parsed.data.fileId);
-    if (result.ok) return ok({ deleted: true });
-    return fail(result.reason, "BAD_REQUEST");
+    try {
+      const parsed = deleteDuplicateCandidateSchema.safeParse(raw);
+      if (!parsed.success) return fail(parsed.error.message);
+      const result = await duplicateService.deleteCandidateFile(parsed.data.groupId, parsed.data.fileId);
+      if (result.ok) return ok({ deleted: true });
+      return fail(result.reason, "BAD_REQUEST");
+    } catch (error) {
+      logger.error("Failed to delete duplicate candidate", { error: String(error) });
+      return mapError(error);
+    }
   });
 
   ipcMain.handle(IPC_CHANNELS.SKIP_DUPLICATE_GROUP, (_event, raw: unknown) => {
-    const parsed = skipDuplicateGroupSchema.safeParse(raw);
-    if (!parsed.success) return fail(parsed.error.message);
-    const result = duplicateService.skipGroup(parsed.data.groupId);
-    if (result.ok) return ok({ skipped: true });
-    return fail(result.reason, "BAD_REQUEST");
+    try {
+      const parsed = skipDuplicateGroupSchema.safeParse(raw);
+      if (!parsed.success) return fail(parsed.error.message);
+      const result = duplicateService.skipGroup(parsed.data.groupId);
+      if (result.ok) return ok({ skipped: true });
+      return fail(result.reason, "BAD_REQUEST");
+    } catch (error) {
+      logger.error("Failed to skip duplicate group", { error: String(error) });
+      return mapError(error);
+    }
   });
 
   ipcMain.handle(IPC_CHANNELS.SHOW_ITEM_IN_FOLDER, (_event, filePath: string) => {
@@ -284,6 +319,23 @@ export function registerHandlers(db: Database.Database, userDataPath: string): v
       return ok(library);
     } catch (error) {
       logger.error("Failed to read iPod library", { error: String(error) });
+      return mapError(error);
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.QUERY_IPOD_LIBRARY_TRACKS, async (_event, raw: unknown) => {
+    try {
+      const parsed = queryIpodLibraryTracksSchema.safeParse(raw);
+      if (!parsed.success) return fail(parsed.error.message, "BAD_REQUEST");
+      const result = await ipodService.queryLibraryTracks(parsed.data.mountPath, {
+        search: parsed.data.search,
+        genre: parsed.data.genre,
+        limit: parsed.data.limit,
+        offset: parsed.data.offset
+      });
+      return ok(result);
+    } catch (error) {
+      logger.error("Failed to query iPod library tracks", { error: String(error) });
       return mapError(error);
     }
   });

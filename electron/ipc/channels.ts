@@ -22,6 +22,7 @@ export const IPC_CHANNELS = {
   ON_PROGRESS: "jobs:progress",
   DETECT_IPODS: "devices:detect",
   GET_IPOD_LIBRARY: "devices:library",
+  QUERY_IPOD_LIBRARY_TRACKS: "devices:libraryTracks",
   BROWSE_IPOD: "devices:browse",
   EXPORT_IPOD_TRACKS: "devices:exportTracks",
   COPY_TO_IPOD: "devices:copyToDevice",

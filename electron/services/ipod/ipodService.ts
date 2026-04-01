@@ -25,6 +25,23 @@ export type FsEntry = {
   modifiedAt: string;
 };
 
+export type IpodLibraryQuery = {
+  search?: string;
+  genre?: string;
+  limit?: number;
+  offset?: number;
+};
+
+export type IpodLibraryQueryResult = {
+  tracks: IpodLibrary["tracks"];
+  total: number;
+  offset: number;
+  limit: number;
+  hasMore: boolean;
+  availableGenres: string[];
+};
+
+const UNKNOWN_GENRE = "__unknown_genre__";
 const IPOD_MARKER = path.join("iPod_Control", "iTunes", "iTunesDB");
 
 function mountPointCandidates(): string[] {
@@ -168,6 +185,57 @@ export async function readLibrary(mountPath: string): Promise<IpodLibrary> {
   const dbPath = path.join(mountPath, "iPod_Control", "iTunes", "iTunesDB");
   const buf = await fs.readFile(dbPath);
   return parseItunesDb(buf);
+}
+
+function normalizeText(value: string | null | undefined): string {
+  return (value ?? "").trim();
+}
+
+function normalizeGenre(value: string | null | undefined): string {
+  const genre = normalizeText(value);
+  return genre.length > 0 ? genre : UNKNOWN_GENRE;
+}
+
+export async function queryLibraryTracks(mountPath: string, query: IpodLibraryQuery): Promise<IpodLibraryQueryResult> {
+  const library = await readLibrary(mountPath);
+  const search = normalizeText(query.search).toLowerCase();
+  const requestedGenre = normalizeText(query.genre);
+  const offset = Math.max(0, query.offset ?? 0);
+  const limit = Math.min(1000, Math.max(1, query.limit ?? 250));
+
+  const genreSet = new Set<string>();
+  for (const track of library.tracks) {
+    genreSet.add(normalizeGenre(track.genre));
+  }
+  const availableGenres = Array.from(genreSet)
+    .filter((genre) => genre !== UNKNOWN_GENRE)
+    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+  if (genreSet.has(UNKNOWN_GENRE)) availableGenres.push(UNKNOWN_GENRE);
+
+  const filtered = library.tracks.filter((track) => {
+    const title = normalizeText(track.title).toLowerCase();
+    const artist = normalizeText(track.artist).toLowerCase();
+    const album = normalizeText(track.album).toLowerCase();
+    const genre = normalizeText(track.genre).toLowerCase();
+    const normalizedTrackGenre = normalizeGenre(track.genre);
+    const matchesSearch = !search
+      || title.includes(search)
+      || artist.includes(search)
+      || album.includes(search)
+      || genre.includes(search);
+    const matchesGenre = !requestedGenre || normalizedTrackGenre === requestedGenre;
+    return matchesSearch && matchesGenre;
+  });
+
+  const tracks = filtered.slice(offset, offset + limit);
+  return {
+    tracks,
+    total: filtered.length,
+    offset,
+    limit,
+    hasMore: offset + tracks.length < filtered.length,
+    availableGenres
+  };
 }
 
 function sanitizeFilename(name: string): string {

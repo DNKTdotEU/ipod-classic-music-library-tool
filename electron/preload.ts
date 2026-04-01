@@ -38,6 +38,8 @@ const api = {
   getAppPaths: () => ipcRenderer.invoke(IPC_CHANNELS.GET_APP_PATHS),
   detectIpods: () => ipcRenderer.invoke(IPC_CHANNELS.DETECT_IPODS),
   getIpodLibrary: (mountPath: string) => ipcRenderer.invoke(IPC_CHANNELS.GET_IPOD_LIBRARY, mountPath),
+  queryIpodLibraryTracks: (query: { mountPath: string; search?: string; genre?: string; limit?: number; offset?: number }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.QUERY_IPOD_LIBRARY_TRACKS, query),
   browseIpod: (mountPath: string, relativePath: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.BROWSE_IPOD, { mountPath, relativePath }),
   exportIpodTracks: (mountPath: string, tracks: { filePath: string; title: string; artist: string; ext: string }[], destDir: string) =>

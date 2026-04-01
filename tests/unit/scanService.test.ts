@@ -88,4 +88,15 @@ describe("discoverFiles", () => {
       fs.rmSync(subDir2, { recursive: true, force: true });
     }
   });
+
+  it("deduplicates same physical file across hard links", async () => {
+    const first = path.join(tmpDir, "same.mp3");
+    const second = path.join(tmpDir, "same-hardlink.mp3");
+    fs.writeFileSync(first, "same-audio");
+    fs.linkSync(first, second);
+
+    const files = await discoverFiles([tmpDir], vi.fn(), () => false);
+    const sameFiles = files.filter((f) => path.basename(f).startsWith("same"));
+    expect(sameFiles.length).toBe(1);
+  });
 });

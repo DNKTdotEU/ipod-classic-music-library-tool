@@ -8,11 +8,11 @@ type JobTask = (
 ) => Promise<void>;
 
 export class JobCoordinator {
-  private readonly jobs = new Map<string, { cancelled: boolean }>();
+  private readonly jobs = new Map<string, { cancelled: boolean; type: JobType }>();
 
   run(jobType: JobType, task: JobTask, onEvent: (event: ProgressEvent) => void): string {
     const jobId = randomUUID();
-    this.jobs.set(jobId, { cancelled: false });
+    this.jobs.set(jobId, { cancelled: false, type: jobType });
     const emit = (event: ProgressPayload) => {
       if (this.jobs.get(jobId)?.cancelled) return;
       onEvent({ ...event, jobId, jobType, status: event.status ?? "running" });
@@ -39,5 +39,16 @@ export class JobCoordinator {
     if (!found) return false;
     found.cancelled = true;
     return true;
+  }
+
+  hasActiveJobs(): boolean {
+    return this.jobs.size > 0;
+  }
+
+  hasActiveJobType(type: JobType): boolean {
+    for (const job of this.jobs.values()) {
+      if (job.type === type) return true;
+    }
+    return false;
   }
 }

@@ -760,6 +760,10 @@ button:disabled {
   min-width: 200px;
 }
 
+.library-genre-filter {
+  min-width: 180px;
+}
+
 .library-filter::placeholder {
   color: #64748b;
 }
@@ -767,6 +771,12 @@ button:disabled {
 .library-count {
   font-size: 0.85rem;
   color: #94a3b8;
+}
+
+.library-empty {
+  text-align: center;
+  color: #94a3b8;
+  padding: 18px 10px;
 }
 
 .ipod-library-table-wrap {
@@ -814,6 +824,14 @@ button:disabled {
 
 .ipod-library-table tr.row-selected td {
   background: #312e8140;
+}
+
+@media (max-width: 840px) {
+  .library-filter,
+  .library-genre-filter {
+    min-width: 150px;
+    flex: 1;
+  }
 }
 
 /* ── File explorer ── */

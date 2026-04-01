@@ -13,12 +13,12 @@ Desktop-first application for cleaning duplicate music files, comparing variants
 ## Features
 
 - **Library scanning** with real filesystem discovery, metadata extraction via `music-metadata`, and SHA-256 file hashing. Progress events stream to the UI with cancel support.
-- **Duplicate detection** — exact duplicates (by file content hash) and likely duplicates (by normalized title + artist with duration tolerance). Confidence scoring for likely matches.
-- **Duplicate review** — step through groups and candidates, preview audio/video in-app, keep/delete/reveal decisions with filter for unresolved groups.
+- **Duplicate detection** — exact duplicates (by file content hash) and likely duplicates (by normalized title + artist). Confidence threshold and duration tolerance are configurable in Settings.
+- **Duplicate review** — step through groups and candidates, preview audio/video in-app, keep/delete/skip/reveal decisions with filter for unresolved groups.
 - **Quarantine safety model** — files are physically moved to a quarantine directory (copy + unlink for cross-device safety). Restore or permanently delete from quarantine with full audit history.
 - **Dashboard** with human-readable metric cards linking to relevant views.
 - **History timeline** with paginated event log, expandable payloads, and event type badges.
-- **Settings** for scan mode, folder defaults, log level, confirmation dialog preferences, and application path inspection.
+- **Settings** for scan mode, reconcile strategy (full vs incremental), likely-duplicate thresholds, folder defaults, log level, confirmation dialog preferences, and application path inspection.
 - **Devices (Experimental)** — detect connected iPod devices (Classic, Video, Nano, Mini, Shuffle), parse iTunesDB to browse the on-device music library, export tracks with human-readable filenames, and use the iPod as external file storage with a built-in file explorer.
 - **SQLite persistence** with migration framework, startup health checks, and WAL mode.
 - **Typed IPC** with Zod validation, envelope error pattern, and structured progress events with status field.
@@ -62,8 +62,10 @@ See product planning and architecture docs under `docs/`.
    Vite serves the renderer on port **5173**, Electron main/preload compile to `dist-electron/`, and the window loads the dev server.
 
 3. Scan a music library: go to **Scan**, add one or more folders, choose a mode, and click **Start scan**. The scan indexes files, extracts metadata, hashes content, and detects duplicates.
+   - **Full reconcile** mode prunes stale database entries for files missing on disk.
+   - **Incremental** mode keeps records outside the scanned folders.
 
-4. Review duplicates: switch to **Duplicates**, step through groups, preview audio, and use **Keep This** or **Delete file** to resolve.
+4. Review duplicates: switch to **Duplicates**, step through groups, preview audio, and use **Keep This**, **Delete file**, or **Skip** to resolve.
 
 5. Run quality gates:
 
@@ -119,6 +121,10 @@ All dependencies are free, open-source software. See [`docs/third-party-attribut
 ### `better-sqlite3` / NODE_MODULE_VERSION mismatch in Electron
 
 Native addons must match **Electron's** embedded Node, not your shell Node. After `npm install`, `postinstall` runs `electron-rebuild` for `better-sqlite3`. If you still see an ABI error, run `npm run rebuild:electron`. If tests were run locally, run `npm run rebuild:electron` again before starting the app (tests temporarily rebuild the module for Vitest).
+
+### Duplicates reappear after rescanning
+
+Set **Scan reconcile mode** to **Full reconcile** in Settings and run a new scan. Full reconcile removes stale database records for files that no longer exist on disk before duplicate groups are rebuilt.
 
 ## Security and privacy notes
 

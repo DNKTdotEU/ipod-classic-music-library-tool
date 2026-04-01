@@ -49,6 +49,12 @@ Scope includes all `electron/**/*.ts` and `src/**/*.ts` files, excluding test fi
 
 Tests that need SQLite create a temporary database per test case using `fs.mkdtempSync`. Each test gets a fresh database with migrations applied. No shared state between tests.
 
+Additional focus areas in the duplicate pipeline:
+
+- stale `file_copies` pruning and orphan-track cleanup
+- duplicate decision edge cases (partial failures, skip behavior, persistence consistency)
+- configurable likely-duplicate thresholds and status preservation across re-detection
+
 ### File system tests
 
 Tests that interact with the filesystem (quarantine, preferences) use temporary directories. Files are created and verified within the test scope.

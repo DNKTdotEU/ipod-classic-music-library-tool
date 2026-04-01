@@ -1,4 +1,10 @@
-import type { PickPathsOptions, ProgressEvent, ScanMode, UserSettingsPatch } from "../ipc/types";
+import type {
+  IpodLibraryTrackQuery,
+  PickPathsOptions,
+  ProgressEvent,
+  ScanMode,
+  UserSettingsPatch
+} from "../ipc/types";
 
 declare global {
   interface Window {
@@ -27,6 +33,7 @@ declare global {
       getAppPaths: () => Promise<unknown>;
       detectIpods: () => Promise<unknown>;
       getIpodLibrary: (mountPath: string) => Promise<unknown>;
+      queryIpodLibraryTracks: (query: IpodLibraryTrackQuery) => Promise<unknown>;
       browseIpod: (mountPath: string, relativePath: string) => Promise<unknown>;
       exportIpodTracks: (mountPath: string, tracks: { filePath: string; title: string; artist: string; ext: string }[], destDir: string) => Promise<unknown>;
       copyToIpod: (mountPath: string, destRelative: string, sourcePaths: string[]) => Promise<unknown>;

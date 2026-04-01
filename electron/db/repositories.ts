@@ -96,7 +96,8 @@ export class DuplicateRepository {
     }
     const nextCandidates = parsed.candidates.filter((c) => c.id !== fileId);
     if (nextCandidates.length === parsed.candidates.length) return false;
-    if (nextCandidates.length === 0) {
+    this.db.prepare("DELETE FROM duplicate_group_items WHERE group_id = ? AND file_copy_id = ?").run(groupId, fileId);
+    if (nextCandidates.length < 2) {
       this.db.prepare("DELETE FROM duplicate_groups WHERE id = ?").run(groupId);
       return true;
     }
@@ -240,6 +241,16 @@ export class TrackRepository {
       }
     });
     tx();
+  }
+
+  removeFileCopyByPath(filePath: string): boolean {
+    const tx = this.db.transaction(() => {
+      const deleted = this.db.prepare("DELETE FROM file_copies WHERE path = ?").run(filePath);
+      if (deleted.changes === 0) return false;
+      this.db.prepare("DELETE FROM tracks WHERE id NOT IN (SELECT DISTINCT track_id FROM file_copies)").run();
+      return true;
+    });
+    return tx();
   }
 
   /**

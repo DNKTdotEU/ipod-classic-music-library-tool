@@ -1,13 +1,14 @@
 import fs from "node:fs/promises";
 
 import type { DuplicateGroup } from "./types.js";
-import { DuplicateRepository, HistoryRepository } from "../db/repositories.js";
+import { DuplicateRepository, HistoryRepository, TrackRepository } from "../db/repositories.js";
 import { isMediaFilePath } from "../media/fileMedia.js";
 
 export class DuplicateService {
   constructor(
     private readonly duplicateRepository: DuplicateRepository,
-    private readonly historyRepository: HistoryRepository
+    private readonly historyRepository: HistoryRepository,
+    private readonly trackRepository: TrackRepository
   ) {}
 
   getGroups(): DuplicateGroup[] {
@@ -17,7 +18,7 @@ export class DuplicateService {
   async applyDecision(
     groupId: string,
     keepFileId: string
-  ): Promise<{ ok: true; deleted: string[]; failed: string[] } | { ok: false; reason: string }> {
+  ): Promise<{ ok: true; deleted: string[]; failed: string[]; resolved: boolean } | { ok: false; reason: string }> {
     const group = this.duplicateRepository.list().find((item) => item.id === groupId);
     if (!group) return { ok: false, reason: "Group not found" };
     const keepExists = group.candidates.some((item) => item.id === keepFileId);
@@ -30,6 +31,7 @@ export class DuplicateService {
     for (const candidate of others) {
       try {
         await fs.unlink(candidate.path);
+        this.trackRepository.removeFileCopyByPath(candidate.path);
         this.duplicateRepository.removeCandidate(groupId, candidate.id);
         deleted.push(candidate.path);
       } catch (err) {
@@ -38,14 +40,19 @@ export class DuplicateService {
       }
     }
 
-    this.duplicateRepository.markResolved(groupId);
+    const remainingCount = 1 + failed.length;
+    const resolved = remainingCount < 2;
+    if (resolved) {
+      this.duplicateRepository.markResolved(groupId);
+    }
     this.historyRepository.record("decision_applied", "Duplicate decision applied — kept file, deleted others", {
       groupId,
       keepFileId,
       deleted,
-      failed
+      failed,
+      resolved
     });
-    return { ok: true, deleted, failed };
+    return { ok: true, deleted, failed, resolved };
   }
 
   skipGroup(groupId: string): { ok: true } | { ok: false; reason: string } {
@@ -74,6 +81,7 @@ export class DuplicateService {
       const msg = err instanceof Error ? err.message : String(err);
       return { ok: false, reason: `Could not delete file: ${msg}` };
     }
+    this.trackRepository.removeFileCopyByPath(candidate.path);
     const updated = this.duplicateRepository.removeCandidate(groupId, fileId);
     if (!updated) return { ok: false, reason: "Failed to update library after delete" };
     this.historyRepository.record("duplicate_file_deleted", "Removed duplicate candidate file from disk", {

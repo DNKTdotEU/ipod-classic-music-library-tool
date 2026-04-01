@@ -40,8 +40,10 @@ describe("JobCoordinator", () => {
     );
 
     expect(coordinator.cancel(jobId)).toBe(true);
+    expect(coordinator.hasActiveJobType("scan")).toBe(true);
     await new Promise((r) => setTimeout(r, 100));
     expect(events.length).toBe(1);
+    expect(coordinator.hasActiveJobs()).toBe(false);
   });
 
   it("cancel returns false for unknown job", () => {

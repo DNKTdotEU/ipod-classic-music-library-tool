@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactElement } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
 import type { FsEntry, IpodDevice, IpodLibrary, IpodTrack } from "../ipc/types";
 
 type Envelope<T> = { ok: true; data: T } | { ok: false; error: { message: string } };
@@ -8,6 +8,9 @@ type SubTab = "library" | "explorer" | "info";
 type Props = {
   onStatus: (message: string, type: "info" | "success" | "error") => void;
 };
+
+const ALL_GENRES = "__all_genres__";
+const UNKNOWN_GENRE = "__unknown_genre__";
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B";
@@ -29,6 +32,15 @@ function fileExtension(filePath: string): string {
   return dot >= 0 ? filePath.slice(dot) : "";
 }
 
+function normalizeText(value: string | null | undefined): string {
+  return (value ?? "").trim();
+}
+
+function normalizeGenre(value: string | null | undefined): string {
+  const genre = normalizeText(value);
+  return genre.length > 0 ? genre : UNKNOWN_GENRE;
+}
+
 export function DevicesView({ onStatus }: Props): ReactElement {
   const api = window.appApi;
   const [devices, setDevices] = useState<IpodDevice[]>([]);
@@ -39,6 +51,7 @@ export function DevicesView({ onStatus }: Props): ReactElement {
   const [library, setLibrary] = useState<IpodLibrary | null>(null);
   const [libraryLoading, setLibraryLoading] = useState(false);
   const [libraryFilter, setLibraryFilter] = useState("");
+  const [selectedGenre, setSelectedGenre] = useState<string>(ALL_GENRES);
   const [selectedTrackIds, setSelectedTrackIds] = useState<Set<number>>(new Set());
 
   const [fsEntries, setFsEntries] = useState<FsEntry[]>([]);
@@ -76,6 +89,8 @@ export function DevicesView({ onStatus }: Props): ReactElement {
     setLibrary(null);
     setFsEntries([]);
     setCurrentPath("");
+    setLibraryFilter("");
+    setSelectedGenre(ALL_GENRES);
     setSelectedTrackIds(new Set());
     setSubTab("library");
   }, []);
@@ -87,6 +102,9 @@ export function DevicesView({ onStatus }: Props): ReactElement {
       const result = (await api.getIpodLibrary(selectedDevice.mountPath)) as Envelope<IpodLibrary>;
       if (result.ok) {
         setLibrary(result.data);
+        setSelectedTrackIds(new Set());
+        setLibraryFilter("");
+        setSelectedGenre(ALL_GENRES);
         onStatus(`Loaded ${result.data.tracks.length} tracks from iPod library.`, "success");
       } else {
         onStatus(result.error.message, "error");
@@ -231,27 +249,61 @@ export function DevicesView({ onStatus }: Props): ReactElement {
     });
   }
 
-  function toggleAllTracks() {
-    if (!library) return;
-    const filtered = filteredTracks();
-    if (selectedTrackIds.size === filtered.length) {
-      setSelectedTrackIds(new Set());
-    } else {
-      setSelectedTrackIds(new Set(filtered.map((t) => t.id)));
-    }
-  }
+  const tracks = useMemo(() => library?.tracks ?? [], [library]);
+  const normalizedQuery = libraryFilter.trim().toLowerCase();
 
-  function filteredTracks(): IpodTrack[] {
+  const genreOptions = useMemo(() => {
+    const seen = new Set<string>();
+    for (const track of tracks) {
+      const genre = normalizeGenre(track.genre);
+      seen.add(genre);
+    }
+    const sorted = Array.from(seen)
+      .filter((genre) => genre !== UNKNOWN_GENRE)
+      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+    if (seen.has(UNKNOWN_GENRE)) sorted.push(UNKNOWN_GENRE);
+    return sorted;
+  }, [tracks]);
+
+  const filteredTracks = useMemo<IpodTrack[]>(() => {
     if (!library) return [];
-    if (!libraryFilter) return library.tracks;
-    const q = libraryFilter.toLowerCase();
-    return library.tracks.filter(
-      (t) =>
-        t.title.toLowerCase().includes(q) ||
-        t.artist.toLowerCase().includes(q) ||
-        t.album.toLowerCase().includes(q) ||
-        t.genre.toLowerCase().includes(q)
-    );
+    return tracks.filter((track) => {
+      const title = normalizeText(track.title).toLowerCase();
+      const artist = normalizeText(track.artist).toLowerCase();
+      const album = normalizeText(track.album).toLowerCase();
+      const genre = normalizeText(track.genre).toLowerCase();
+      const normalizedTrackGenre = normalizeGenre(track.genre);
+      const matchesText = !normalizedQuery
+        || title.includes(normalizedQuery)
+        || artist.includes(normalizedQuery)
+        || album.includes(normalizedQuery)
+        || genre.includes(normalizedQuery);
+      const matchesGenre = selectedGenre === ALL_GENRES || normalizedTrackGenre === selectedGenre;
+      return matchesText && matchesGenre;
+    });
+  }, [library, tracks, normalizedQuery, selectedGenre]);
+
+  const visibleTrackIdSet = useMemo(() => new Set(filteredTracks.map((t) => t.id)), [filteredTracks]);
+  const selectedVisibleCount = useMemo(() => {
+    let count = 0;
+    for (const id of selectedTrackIds) {
+      if (visibleTrackIdSet.has(id)) count++;
+    }
+    return count;
+  }, [selectedTrackIds, visibleTrackIdSet]);
+  const allVisibleSelected = filteredTracks.length > 0 && selectedVisibleCount === filteredTracks.length;
+  const hasHiddenSelected = selectedTrackIds.size > selectedVisibleCount;
+
+  function toggleAllTracks() {
+    setSelectedTrackIds((prev) => {
+      const next = new Set(prev);
+      const everyVisibleSelected = filteredTracks.length > 0 && filteredTracks.every((track) => next.has(track.id));
+      for (const track of filteredTracks) {
+        if (everyVisibleSelected) next.delete(track.id);
+        else next.add(track.id);
+      }
+      return next;
+    });
   }
 
   const breadcrumbs = currentPath ? currentPath.split("/").filter(Boolean) : [];
@@ -319,7 +371,38 @@ export function DevicesView({ onStatus }: Props): ReactElement {
                       value={libraryFilter}
                       onChange={(e) => setLibraryFilter(e.target.value)}
                     />
-                    <span className="library-count">{filteredTracks().length} tracks</span>
+                    <select
+                      className="library-filter library-genre-filter"
+                      value={selectedGenre}
+                      onChange={(e) => setSelectedGenre(e.target.value)}
+                    >
+                      <option value={ALL_GENRES}>All genres</option>
+                      {genreOptions.map((genre) => (
+                        <option key={genre} value={genre}>
+                          {genre === UNKNOWN_GENRE ? "Unknown / Unspecified" : genre}
+                        </option>
+                      ))}
+                    </select>
+                    {(libraryFilter || selectedGenre !== ALL_GENRES) && (
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={() => {
+                          setLibraryFilter("");
+                          setSelectedGenre(ALL_GENRES);
+                        }}
+                      >
+                        Clear filters
+                      </button>
+                    )}
+                    <span className="library-count">
+                      {filteredTracks.length} visible / {tracks.length} total
+                    </span>
+                    {selectedTrackIds.size > 0 && (
+                      <span className="library-count">
+                        Selected {selectedVisibleCount} visible / {selectedTrackIds.size} total{hasHiddenSelected ? " (includes hidden matches)" : ""}
+                      </span>
+                    )}
                     <button type="button" onClick={() => void exportSelected()} disabled={selectedTrackIds.size === 0}>
                       Export selected ({selectedTrackIds.size})
                     </button>
@@ -335,32 +418,42 @@ export function DevicesView({ onStatus }: Props): ReactElement {
                           <th className="col-checkbox">
                             <input
                               type="checkbox"
-                              checked={filteredTracks().length > 0 && selectedTrackIds.size === filteredTracks().length}
+                              checked={allVisibleSelected}
                               onChange={toggleAllTracks}
                             />
                           </th>
                           <th>Title</th>
                           <th>Artist</th>
                           <th>Album</th>
+                          <th>Genre</th>
                           <th>Duration</th>
                           <th>Bitrate</th>
                           <th>Plays</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {filteredTracks().map((t) => (
-                          <tr key={t.id} className={selectedTrackIds.has(t.id) ? "row-selected" : ""}>
-                            <td className="col-checkbox">
-                              <input type="checkbox" checked={selectedTrackIds.has(t.id)} onChange={() => toggleTrack(t.id)} />
+                        {filteredTracks.length === 0 ? (
+                          <tr>
+                            <td colSpan={8} className="library-empty">
+                              No tracks match the current filters.
                             </td>
-                            <td title={t.title}>{t.title || "(untitled)"}</td>
-                            <td title={t.artist}>{t.artist || "—"}</td>
-                            <td title={t.album}>{t.album || "—"}</td>
-                            <td>{t.durationMs > 0 ? formatDuration(t.durationMs) : "—"}</td>
-                            <td>{t.bitrate > 0 ? `${t.bitrate} kbps` : "—"}</td>
-                            <td>{t.playCount}</td>
                           </tr>
-                        ))}
+                        ) : (
+                          filteredTracks.map((t) => (
+                            <tr key={t.id} className={selectedTrackIds.has(t.id) ? "row-selected" : ""}>
+                              <td className="col-checkbox">
+                                <input type="checkbox" checked={selectedTrackIds.has(t.id)} onChange={() => toggleTrack(t.id)} />
+                              </td>
+                              <td title={t.title}>{t.title || "(untitled)"}</td>
+                              <td title={t.artist}>{t.artist || "—"}</td>
+                              <td title={t.album}>{t.album || "—"}</td>
+                              <td title={t.genre}>{normalizeGenre(t.genre) === UNKNOWN_GENRE ? "Unknown / Unspecified" : t.genre}</td>
+                              <td>{t.durationMs > 0 ? formatDuration(t.durationMs) : "—"}</td>
+                              <td>{t.bitrate > 0 ? `${t.bitrate} kbps` : "—"}</td>
+                              <td>{t.playCount}</td>
+                            </tr>
+                          ))
+                        )}
                       </tbody>
                     </table>
                   </div>

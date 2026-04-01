@@ -6,6 +6,7 @@ export async function runBulkDuplicateRefresh(
   jobId: string,
   duplicateDetectionService: DuplicateDetectionService,
   historyRepository: HistoryRepository,
+  options: { likelyMinConfidence: number; likelyDurationThresholdSec: number },
   onProgress: (event: ProgressPayload) => void,
   isCancelled: () => boolean
 ): Promise<void> {
@@ -16,7 +17,15 @@ export async function runBulkDuplicateRefresh(
 
   onProgress({ phase: "prepare", processed: 0, total: 1, message: "Re-analyzing duplicate groups…" });
 
-  const result = duplicateDetectionService.detect(onProgress, isCancelled);
+  const result = duplicateDetectionService.detect(
+    {
+      likelyMinConfidence: options.likelyMinConfidence,
+      durationThresholdSec: options.likelyDurationThresholdSec,
+      preserveResolved: true
+    },
+    onProgress,
+    isCancelled
+  );
 
   if (isCancelled()) {
     onProgress({ phase: "commit", processed: 1, total: 1, message: "Refresh cancelled", status: "cancelled" });

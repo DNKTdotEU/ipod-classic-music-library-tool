@@ -18,6 +18,8 @@ export async function discoverFiles(
   isCancelled: () => boolean
 ): Promise<string[]> {
   const files: string[] = [];
+  const seenFiles = new Set<string>();
+  const seenRoots = new Set<string>();
   const visited = new Set<string>();
 
   async function walk(dir: string): Promise<void> {
@@ -37,13 +39,32 @@ export async function discoverFiles(
           await walk(fullPath);
         }
       } else if (entry.isFile() && isMediaFilePath(entry.name)) {
-        files.push(fullPath);
+        let fileKey = fullPath;
+        try {
+          const stat = await fsp.stat(fullPath);
+          fileKey = `${stat.dev}:${stat.ino}`;
+        } catch {
+          // fall back to path-based key if stat fails
+        }
+        if (!seenFiles.has(fileKey)) {
+          seenFiles.add(fileKey);
+          files.push(fullPath);
+        }
       }
     }
   }
 
-  for (const folder of folders) {
+  for (const folderRaw of folders) {
     if (isCancelled()) break;
+    const folder = path.resolve(folderRaw);
+    let dedupeRoot = folder;
+    try {
+      dedupeRoot = await fsp.realpath(folder);
+    } catch {
+      // fall back to resolved input path
+    }
+    if (seenRoots.has(dedupeRoot)) continue;
+    seenRoots.add(dedupeRoot);
     onProgress({ phase: "scan", processed: files.length, total: 1, message: `Scanning ${folder}…` });
     await walk(folder);
   }
@@ -90,7 +111,12 @@ export class ScanService {
   async runScan(
     jobId: string,
     folders: string[],
-    _mode: ScanMode,
+    mode: ScanMode,
+    options: {
+      reconcileMode: "full" | "incremental";
+      likelyMinConfidence: number;
+      likelyDurationThresholdSec: number;
+    },
     onProgress: (event: ProgressPayload) => void,
     isCancelled: () => boolean
   ): Promise<void> {
@@ -105,6 +131,14 @@ export class ScanService {
 
     const totalFiles = files.length;
     if (totalFiles === 0) {
+      if (options.reconcileMode === "full") {
+        this.trackRepository.pruneStaleFileCopies(new Set<string>());
+        this.duplicateDetectionService.detect({
+          likelyMinConfidence: options.likelyMinConfidence,
+          durationThresholdSec: options.likelyDurationThresholdSec,
+          preserveResolved: true
+        });
+      }
       this.historyRepository.record("scan_completed", "Scan found no media files", { jobId, folders });
       onProgress({ phase: "finalize", processed: 1, total: 1, message: "No media files found in the selected folders.", status: "completed" });
       return;
@@ -236,15 +270,34 @@ export class ScanService {
       return;
     }
 
-    const validPaths = new Set(files);
-    const pruned = this.trackRepository.pruneStaleFileCopies(validPaths);
-    if (pruned > 0) {
-      onProgress({ phase: "analyze", processed: totalFiles, total: totalFiles, message: `Removed ${pruned} stale record(s) for files no longer on disk.` });
+    if (options.reconcileMode === "full") {
+      const validPaths = new Set(files);
+      const pruned = this.trackRepository.pruneStaleFileCopies(validPaths);
+      if (pruned > 0) {
+        onProgress({ phase: "analyze", processed: totalFiles, total: totalFiles, message: `Removed ${pruned} stale record(s) for files no longer on disk.` });
+      }
     }
 
     onProgress({ phase: "group", processed: 0, total: totalFiles, message: "Detecting duplicates…" });
 
-    const result = this.duplicateDetectionService.detect(onProgress, isCancelled);
+    const modeLikely: Record<ScanMode, { minConfidence: number; durationThresholdSec: number; allowTitleOnly: boolean; requireArtist: boolean }> = {
+      strict: { minConfidence: 0.9, durationThresholdSec: 2, allowTitleOnly: false, requireArtist: true },
+      balanced: { minConfidence: 0.75, durationThresholdSec: 4, allowTitleOnly: true, requireArtist: false },
+      loose: { minConfidence: 0.6, durationThresholdSec: 8, allowTitleOnly: true, requireArtist: false }
+    };
+    const m = modeLikely[mode];
+
+    const result = this.duplicateDetectionService.detect(
+      {
+        likelyMinConfidence: Math.min(options.likelyMinConfidence, m.minConfidence),
+        durationThresholdSec: Math.max(options.likelyDurationThresholdSec, m.durationThresholdSec),
+        preserveResolved: true,
+        allowTitleOnlyLikely: m.allowTitleOnly,
+        requireArtistForLikely: m.requireArtist
+      },
+      onProgress,
+      isCancelled
+    );
 
     if (isCancelled()) {
       this.historyRepository.record("scan_cancelled", "Scan stopped by user", { jobId, folders });

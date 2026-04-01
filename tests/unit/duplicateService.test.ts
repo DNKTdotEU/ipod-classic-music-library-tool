@@ -4,7 +4,7 @@ import path from "node:path";
 import { describe, expect, it, beforeEach } from "vitest";
 import { getDatabase } from "../../electron/db/client";
 import { runMigrations } from "../../electron/db/migrate";
-import { DuplicateRepository, HistoryRepository } from "../../electron/db/repositories";
+import { DuplicateRepository, HistoryRepository, TrackRepository } from "../../electron/db/repositories";
 import { DuplicateService } from "../../electron/services/duplicateService";
 import type { DuplicateGroup } from "../../electron/services/types";
 
@@ -28,17 +28,28 @@ function makeCandidate(id: string, filePath: string) {
 describe("DuplicateService", () => {
   let service: DuplicateService;
   let duplicateRepository: DuplicateRepository;
+  let trackRepository: TrackRepository;
+  let db: ReturnType<typeof getDatabase>;
   let tmp: string;
 
   beforeEach(() => {
     tmp = makeTmpDir();
     const dbPath = path.join(tmp, "test.db");
-    const db = getDatabase(dbPath);
+    db = getDatabase(dbPath);
     runMigrations(db);
     duplicateRepository = new DuplicateRepository(db);
     const historyRepository = new HistoryRepository(db);
-    service = new DuplicateService(duplicateRepository, historyRepository);
+    trackRepository = new TrackRepository(db);
+    service = new DuplicateService(duplicateRepository, historyRepository, trackRepository);
   });
+
+  function seedCopy(fileId: string, filePath: string, trackId = `t-${fileId}`) {
+    const now = new Date().toISOString();
+    db.prepare("INSERT INTO tracks (id, title, artists, created_at, updated_at) VALUES (?, ?, ?, ?, ?)")
+      .run(trackId, "Song", "Artist", now, now);
+    db.prepare("INSERT INTO file_copies (id, track_id, path, filename, format, duration_sec, size_bytes, modified_at, metadata_completeness, fingerprint_hash, has_artwork) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(fileId, trackId, filePath, path.basename(filePath), "mp3", 180, 1000, now, 1, `hash-${fileId}`, 0);
+  }
 
   describe("applyDecision", () => {
     it("returns error for unknown group", async () => {
@@ -83,12 +94,16 @@ describe("DuplicateService", () => {
         ]
       };
       duplicateRepository.replaceDemoGroups([group]);
+      seedCopy("f-keep", keepFile, "t-keep");
+      seedCopy("f-del1", deleteFile1, "t-del1");
+      seedCopy("f-del2", deleteFile2, "t-del2");
 
       const result = await service.applyDecision("g1", "f-keep");
       expect(result).toEqual({
         ok: true,
         deleted: [deleteFile1, deleteFile2],
-        failed: []
+        failed: [],
+        resolved: true
       });
 
       expect(fs.existsSync(keepFile)).toBe(true);
@@ -117,16 +132,19 @@ describe("DuplicateService", () => {
         ]
       };
       duplicateRepository.replaceDemoGroups([group]);
+      seedCopy("f-keep", keepFile, "t-keep");
+      seedCopy("f-missing", missingFile, "t-missing");
 
       const result = await service.applyDecision("g1", "f-keep");
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.deleted).toEqual([]);
-        expect(result.failed).toEqual([missingFile]);
+        expect(result.failed.length).toBe(1);
+        expect(result.failed[0]!).toContain(missingFile);
+        expect(result.resolved).toBe(false);
       }
-
       const updated = duplicateRepository.list().find((g) => g.id === "g1");
-      expect(updated?.status).toBe("user_resolved");
+      expect(updated?.status).toBe("unreviewed");
     });
 
     it("still succeeds when group was already user_resolved", async () => {
@@ -140,6 +158,7 @@ describe("DuplicateService", () => {
         candidates: [makeCandidate("f1", "/x")]
       };
       duplicateRepository.replaceDemoGroups([group]);
+      seedCopy("f1", "/x", "t1");
       const result = await service.applyDecision("g2", "f1");
       expect(result.ok).toBe(true);
     });
@@ -163,6 +182,8 @@ describe("DuplicateService", () => {
         ]
       };
       duplicateRepository.replaceDemoGroups([group]);
+      seedCopy("f1", filePath, "t1");
+      seedCopy("f2", path.join(tmp, "other.mp3"), "t2");
 
       const result = await service.deleteCandidateFile("g1", "f1");
       expect(result).toEqual({ ok: true });
